@@ -1,0 +1,8 @@
+--- #YAML:1.0
+name: Class-DBI-Sweet
+version: 0.01
+author:
+  - Christian Hansen <ch@ngmedia.com>
+abstract: 
+license: perl
+generated_by: Module::Build version 0.261, without YAML.pm
