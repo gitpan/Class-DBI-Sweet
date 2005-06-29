@@ -6,14 +6,16 @@ my %arguments = (
     license            => 'perl',
     module_name        => 'Class::DBI::Sweet',
     requires           => {
-        'Class::DBI'    => 0,
+        'Class::DBI'    => 0.96,
         'Data::Page'    => 0,
         'DBI'           => 0,
         'List::Util'    => 0,
-        'SQL::Abstract' => 0
+        'SQL::Abstract' => 0,
+        'DBD::SQLite'   => 1.08
     },
     create_makefile_pl => 'passthrough',
-    test_files         => [ glob('t/*.t') ]
+    create_readme      => 1,
+    test_files         => [ glob('t/*.t'), glob('t/*/*.t') ]
 );
 
 if ( $^O eq 'MSWin32' ) {

@@ -1,4 +1,11 @@
 Revision history for Perl extension Class::DBI::Sweet
 
+0.02
+  - Added prefetch, join on search and resultset cache. Lots of toys!
+
+0.02  Xxx Xxx 00 00:00:00 2005
+        - added alias pager to page
+        - added some syntactic sugar ;)
+
 0.01  Sun May 29 01:00:00 2005
         - original version.

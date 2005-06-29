@@ -1,8 +1,24 @@
---- #YAML:1.0
+---
 name: Class-DBI-Sweet
-version: 0.01
-author:
-  - Christian Hansen <ch@ngmedia.com>
-abstract: 
+version: 0.02
+author: ~
+abstract: ~
 license: perl
-generated_by: Module::Build version 0.261, without YAML.pm
+requires:
+  Class::DBI: 0.96
+  DBD::SQLite: 1.08
+  DBI: 0
+  Data::Page: 0
+  Data::UUID: 0
+  List::Util: 0
+  SQL::Abstract: 0
+provides:
+  Class::DBI::Sweet:
+    file: lib/Class/DBI/Sweet.pm
+    version: 0.02
+  Class::DBI::Sweet::SQL::Abstract:
+    file: lib/Class/DBI/Sweet.pm
+    version: 0.02
+  Class::DBI::Sweet::Topping:
+    file: lib/Class/DBI/Sweet/Topping.pm
+generated_by: Module::Build version 0.25
