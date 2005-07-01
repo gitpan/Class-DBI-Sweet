@@ -1,6 +1,6 @@
 ---
 name: Class-DBI-Sweet
-version: 0.02
+version: 0.03
 author: ~
 abstract: ~
 license: perl
@@ -15,10 +15,10 @@ requires:
 provides:
   Class::DBI::Sweet:
     file: lib/Class/DBI/Sweet.pm
-    version: 0.02
+    version: 0.03
   Class::DBI::Sweet::SQL::Abstract:
     file: lib/Class/DBI/Sweet.pm
-    version: 0.02
+    version: 0.03
   Class::DBI::Sweet::Topping:
     file: lib/Class/DBI/Sweet/Topping.pm
 generated_by: Module::Build version 0.25

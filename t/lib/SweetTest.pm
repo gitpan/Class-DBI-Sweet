@@ -10,6 +10,7 @@ my $db_file = "t/var/SweetTest.db";
 
 unlink($db_file) if -e $db_file;
 unlink($db_file . "-journal") if -e $db_file . "-journal";
+mkdir("t/var") unless -d "t/var";
 
 __PACKAGE__->connection("dbi:SQLite:${db_file}");
 

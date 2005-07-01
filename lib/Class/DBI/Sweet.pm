@@ -17,13 +17,15 @@ BEGIN { # Use Time::HiRes' time() if possible
 }
 
 if ( $^O eq 'MSWin32' ) {
-    require Win32API::GUID;
+    eval "require Win32API::GUID;";
 }
 else {
-    require Data::UUID;
+    eval "require Data::UUID;";
 }
 
-our $VERSION = '0.02';
+our $UUID_Is_Available = ($@ ? 0 : 1);
+
+our $VERSION = '0.03';
 
 #----------------------------------------------------------------------
 # RETRIEVING
@@ -584,6 +586,8 @@ sub delete {
 
 sub _next_in_sequence {
     my $self = shift;
+
+    die "UUID features not available" unless $UUID_Is_Available;
 
     if ( lc $self->sequence eq 'uuid' ) {
 
