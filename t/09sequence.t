@@ -1,7 +1,24 @@
 use strict;
 use warnings;
 
-use Test::More tests => 2;
+use Test::More;
+
+my $lib;
+
+if ( $^O eq 'MSWin32' ) {
+    $lib = 'Win32API::GUID';
+}
+else {
+    $lib = 'Data::UUID';
+}
+
+eval "require $lib;";
+plan skip_all => "Need $lib for this test" if $@;
+
+eval "use DBD::SQLite";
+plan skip_all => 'needs DBD::SQLite for testing' if $@;
+
+plan tests => 2;
 
 use lib 't/lib';
 

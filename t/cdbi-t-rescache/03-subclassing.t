@@ -1,7 +1,5 @@
 use strict;
 use Test::More;
-eval "use Cache::MemoryCache";
-plan skip_all => "Cache::Cache required" if $@;
 use Class::DBI::Sweet;
 Class::DBI::Sweet->default_search_attributes({ use_resultset_cache => 1 });
 Class::DBI::Sweet->cache(Cache::MemoryCache->new(
@@ -12,6 +10,8 @@ Class::DBI::Sweet->cache(Cache::MemoryCache->new(
 #----------------------------------------------------------------------
 
 BEGIN {
+	eval "use Cache::MemoryCache";
+	plan skip_all => "needs Cache::Cache for testing" if $@;
 	eval "use DBD::SQLite";
 	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 6);
 	use lib 't/cdbi-t/testlib';

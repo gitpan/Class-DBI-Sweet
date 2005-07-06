@@ -25,7 +25,7 @@ else {
 
 our $UUID_Is_Available = ($@ ? 0 : 1);
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 #----------------------------------------------------------------------
 # RETRIEVING
@@ -463,7 +463,7 @@ sub _init {
 
     my $data = $_[0] || {};
 
-    unless ($class->cache || $data->{'_sweet_joins'}) {
+    unless ($class->cache || $data->{'sweet__joins'}) {
         return $class->SUPER::_init(@_);
     }
 

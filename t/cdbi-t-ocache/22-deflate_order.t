@@ -2,12 +2,16 @@ $| = 1;
 use strict;
 
 use Test::More;
-eval "use Cache::MemoryCache";
-plan skip_all => "Cache::Cache required" if $@;
 use Class::DBI::Sweet;
 Class::DBI::Sweet->default_search_attributes({ use_resultset_cache => 0 });
 Class::DBI::Sweet->cache(Cache::MemoryCache->new(
     { namespace => "SweetTest", default_expires_in => 60 } ) ); 
+
+
+BEGIN {
+	eval "use Cache::MemoryCache";
+	plan skip_all => "needs Cache::Cache for testing" if $@;
+}
 
 eval { require Time::Piece::MySQL };
 plan skip_all => "Need Time::Piece::MySQL for this test" if $@;

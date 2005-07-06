@@ -1,11 +1,15 @@
 use strict;
 use warnings;
 
-use Test::More tests => 31;
+use Test::More;
 
 eval "use Cache::MemoryCache";
-
 plan skip_all => 'Cache::Cache required' if $@;
+
+eval "use DBD::SQLite";
+plan skip_all => 'needs DBD::SQLite for testing' if $@;
+
+plan tests => 31;
 
 use lib 't/lib';
 

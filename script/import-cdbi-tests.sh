@@ -11,6 +11,34 @@ elif [ "$SWEETDIR" == "" ]; then
   exit 255;
 fi;
 
+function fix_cache {
+  HEAD='s!use Test::More;!use Test::More;
+use Class::DBI::Sweet;
+Class::DBI::Sweet->default_search_attributes({ use_resultset_cache =>';
+  FOOT='});
+Class::DBI::Sweet->cache(Cache::MemoryCache->new(
+    { namespace => "SweetTest", default_expires_in => 60 } ) ); !
+  && ($begin_added = 0);
+
+s!BEGIN {!BEGIN {
+\teval "use Cache::MemoryCache";
+\tplan skip_all => "needs Cache::Cache for testing" if \$\@;!;
+
+unless ($begin_added) {
+  s!^(eval { require.*)$!
+BEGIN {
+\teval "use Cache::MemoryCache";
+\tplan skip_all => "needs Cache::Cache for testing" if \$\@;
+}
+
+$1! && ($begin_added = 1);
+}
+'
+  EXEC="$HEAD $1 $FOOT"
+  #echo "$EXEC" # Uncomment me when you break the perl script :)
+  perl -pi -e "$EXEC" t/cdbi-t-$2/*.t
+}
+
 rm -rf t/cdbi-t
 
 mkdir t/cdbi-t
@@ -29,25 +57,8 @@ rm -rf t/cdbi-t-rescache
 cp -R t/cdbi-t t/cdbi-t-ocache
 cp -R t/cdbi-t t/cdbi-t-rescache
 
-# A copy of the Class::DBI tests with only object caching enabled
-perl -pi -e 's!use Test::More;!use Test::More;
-eval "use Cache::MemoryCache";
-plan skip_all => "Cache::Cache required" if \$\@;
-use Class::DBI::Sweet;
-Class::DBI::Sweet->default_search_attributes({ use_resultset_cache => 0 });
-Class::DBI::Sweet->cache(Cache::MemoryCache->new(
-    { namespace => "SweetTest", default_expires_in => 60 } ) ); !
-    ' t/cdbi-t-ocache/*.t
-
-# A copy of the Class::DBI tests with Resultset caching enabled
-perl -pi -e 's!use Test::More;!use Test::More;
-eval "use Cache::MemoryCache";
-plan skip_all => "Cache::Cache required" if \$\@;
-use Class::DBI::Sweet;
-Class::DBI::Sweet->default_search_attributes({ use_resultset_cache => 1 });
-Class::DBI::Sweet->cache(Cache::MemoryCache->new(
-    { namespace => "SweetTest", default_expires_in => 60 } ) ); !
-    ' t/cdbi-t-rescache/*.t
+fix_cache 0 ocache
+fix_cache 1 rescache
     
 echo 'Done! Remember to re-run: perl Build.PL'
 
