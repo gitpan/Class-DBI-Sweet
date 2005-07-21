@@ -21,7 +21,7 @@ ok(eq_set([ sort Lazy->columns('Essential') ], [qw/opop this/]), "Essential");
 ok(eq_set([ sort Lazy->columns('things') ],    [qw/that this/]), "things");
 ok(eq_set([ sort Lazy->columns('horizon') ],   [qw/eep orp/]),   "horizon");
 ok(eq_set([ sort Lazy->columns('vertical') ],  [qw/oop opop/]),  "vertical");
-ok(eq_set([ sort Lazy->columns('All') ], [qw/eep oop opop orp this that/]),
+ok(eq_set([ sort map { $_->name } Lazy->columns('All') ], [qw/eep oop opop orp this that/]),
 	"All");
 
 {

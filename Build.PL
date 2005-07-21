@@ -10,7 +10,7 @@ my %arguments = (
         'Data::Page'    => 0,
         'DBI'           => 0,
         'List::Util'    => 0,
-        'SQL::Abstract' => 0,
+        'SQL::Abstract' => 1.17,
         'DBD::SQLite'   => 1.08
     },
     create_makefile_pl => 'passthrough',
@@ -19,10 +19,10 @@ my %arguments = (
 );
 
 if ( $^O eq 'MSWin32' ) {
-    $arguments{requires}->{'Win32API::GUID'} = 0;
+    $arguments{recommends}->{'Win32API::GUID'} = 0;
 }
 else {
-    $arguments{requires}->{'Data::UUID'} = 0;
+    $arguments{recommends}->{'Data::UUID'} = 0;
 }
 
 Module::Build->new(%arguments)->create_build_script;

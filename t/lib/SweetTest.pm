@@ -80,6 +80,10 @@ INSERT INTO tags (tagid, cd, tag) VALUES (6, 4, "Cheesy");
 
 INSERT INTO tags (tagid, cd, tag) VALUES (7, 5, "Cheesy");
 
+INSERT INTO tags (tagid, cd, tag) VALUES (8, 2, "Shiny");
+
+INSERT INTO tags (tagid, cd, tag) VALUES (9, 4, "Shiny");
+
 INSERT INTO twokeys (artist, cd) VALUES (1, 1);
 
 INSERT INTO twokeys (artist, cd) VALUES (1, 2);

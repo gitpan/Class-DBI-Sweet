@@ -1,6 +1,14 @@
 Revision history for Perl extension Class::DBI::Sweet
 
-0.03  Thu Jun 30 xx:xx:xx 2005
+0.05  
+        - No longer require Data::UUID/Win32API::GUID in Build.PL.
+        - Multi-step joins added for search
+
+0.04  Wed Jul  6 04:10:00 2005
+        - Test fixes (Andrew Taylor)
+        - Bugfix to prefetch (Chia-liang Kao)
+
+0.03  Fri Jul  1 09:31:00 2005
         - Fixed test suite.
 
 0.02  Wed Jun 29 15:00:00 2005

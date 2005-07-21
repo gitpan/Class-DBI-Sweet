@@ -25,7 +25,7 @@ else {
 
 our $UUID_Is_Available = ($@ ? 0 : 1);
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 #----------------------------------------------------------------------
 # RETRIEVING
@@ -621,7 +621,7 @@ sub where {
     $self->{cdbi_column_cache}  = { };
 
     foreach my $join (@{$must_join || []}) {
-        $self->_resolve_join($join);
+        $self->_resolve_join($me => $join);
     }
 
     my $sql = '';
@@ -668,55 +668,61 @@ sub _convert {
 sub _default_tables {
     my ($self, $to_convert) = @_;
 
-    my $alias;
+    my $alias = $self->{cdbi_me_alias};
 
-    if ($to_convert =~ /(.*)\./) {
-        $alias = $1;
-    } else {
-        if (my $meta = $self->{cdbi_class}->meta_info(
-                           has_many => $to_convert )) {
-            $alias = $to_convert;
-            $to_convert .= '.'.(($meta->foreign_class->columns('Primary'))[0]);
-        } else {
-            $alias = $self->{cdbi_me_alias};
-            $to_convert = $self->{cdbi_me_alias}.".${to_convert}";
-        }
+    my @alias = split(/\./, $to_convert);
+
+    my $field = pop(@alias);
+
+    foreach my $f_alias (@alias) {
+
+        $self->_resolve_join($alias => $f_alias)
+            unless $self->{cdbi_table_aliases}{$f_alias};
+        $alias = $f_alias;
     }
 
-    unless ($self->{cdbi_table_aliases}->{$alias}) {
-        $self->_resolve_join($alias);
+    if (my $meta = $self->{cdbi_class}->meta_info(
+                       has_many => $field )) {
+
+        my $f_alias = $field;
+        $self->_resolve_join($alias => $f_alias)
+            unless $self->{cdbi_table_aliases}{$f_alias};
+
+        $field = (($meta->foreign_class->columns('Primary'))[0]);
+        $alias = $f_alias;
     }
 
-    return $to_convert;
+    return "${alias}.${field}";
 }
 
 sub _resolve_join {
-    my ($self, $alias) = @_;
-    my $meta = $self->{cdbi_class}->meta_info;
+    my ($self, $l_alias, $f_alias) = @_;
+    my $l_class = $self->{cdbi_table_aliases}->{$l_alias};
+    my $meta = $l_class->meta_info;
     my ($rel, $f_class);
-    if ($rel = $meta->{has_a}{$alias}) {
+    if ($rel = $meta->{has_a}{$f_alias}) {
         $f_class = $rel->foreign_class;
-        $self->{cdbi_join_info}{$alias} = {
-            l_alias => $self->{cdbi_me_alias},
-            l_key => $alias,
+        $self->{cdbi_join_info}{$f_alias} = {
+            l_alias => $l_alias,
+            l_key => $f_alias,
             f_key => ($f_class->columns('Primary'))[0] };
-    } elsif ($rel = $meta->{has_many}{$alias}) {
+    } elsif ($rel = $meta->{has_many}{$f_alias}) {
         $f_class = $rel->foreign_class;
-        $self->{cdbi_join_info}{$alias} = {
-            l_alias => $self->{cdbi_me_alias},
-            l_key => ($self->{cdbi_class}->columns('Primary'))[0],
+        $self->{cdbi_join_info}{$f_alias} = {
+            l_alias => $l_alias,
+            l_key => ($l_class->columns('Primary'))[0],
             f_key => $rel->args->{foreign_key} };
-    } elsif ($rel = $meta->{might_have}{$alias}) {
+    } elsif ($rel = $meta->{might_have}{$f_alias}) {
         $f_class = $rel->foreign_class;
-        $self->{cdbi_join_info}{$alias} = {
-            l_alias => $self->{cdbi_me_alias},
-            l_key => ($self->{cdbi_class}->columns('Primary'))[0],
+        $self->{cdbi_join_info}{$f_alias} = {
+            l_alias => $l_alias,
+            l_key => ($l_class->columns('Primary'))[0],
             f_key => ($f_class->columns('Primary'))[0] };
     } else {
-        croak("Unable to find join info for ${alias}");
+        croak("Unable to find join info for ${f_alias} from ${l_class}");
     }
 
-    $self->{cdbi_table_aliases}{$alias} = $f_class;
+    $self->{cdbi_table_aliases}{$f_alias} = $f_class;
 }
 
 sub _bindtype {
@@ -839,6 +845,10 @@ __END__
     MyApp::CD->count(
            { 'year' => { '>', 1998 }, 'tags.tag' => 'Cheesy',
                'liner_notes.notes' => { 'like' => 'Buy%' } } );
+
+    # Multi-step joins
+
+    MyApp::Artist->search({ 'cds.tags.tag' => 'Shiny' });
 
     # Retrieval with pre-loading
 

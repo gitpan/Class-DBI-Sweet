@@ -6,7 +6,7 @@ use Test::More;
 eval "use DBD::SQLite";
 plan skip_all => 'needs DBD::SQLite for testing' if $@;
 
-plan tests => 16;
+plan tests => 17;
 
 use lib 't/lib';
 
@@ -63,3 +63,7 @@ is(($cds[0]->retrieve_previous)[0]->title, "Caterwaulin' Blues",
 ($artist) = SweetTest::Artist->search_like({ name => '%Boy%' });
 
 cmp_ok( $artist->artistid, '==', 2, "search_like ok" );
+
+my @artists = SweetTest::Artist->search({ 'cds.tags.tag' => 'Shiny' });
+
+cmp_ok( @artists, '==', 2, "two-join search ok" );

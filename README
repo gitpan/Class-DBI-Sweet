@@ -83,6 +83,10 @@ SYNOPSIS
                { 'year' => { '>', 1998 }, 'tags.tag' => 'Cheesy',
                    'liner_notes.notes' => { 'like' => 'Buy%' } } );
 
+        # Multi-step joins
+
+        MyApp::Artist->search({ 'cds.tags.tag' => 'Shiny' });
+
         # Retrieval with pre-loading
 
         my ($cd) = MyApp::CD->search( { ... },
