@@ -14,23 +14,18 @@ BEGIN {
 	plan skip_all => "needs Cache::Cache for testing" if $@;
 	eval "use DBD::SQLite";
 	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 6);
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	Film->CONSTRUCT;
 }
 
-INIT {
+use lib 't/cdbi-t/testlib';
+use Film;
 
-	package Film::Threat;
-	use base 'Film';
-}
-
-package main;
+INIT { @Film::Threat::ISA = qw/Film/; }
 
 ok(Film::Threat->db_Main->ping, 'subclass db_Main()');
 is_deeply [ sort Film::Threat->columns ], [ sort Film->columns ],
 	'has the same columns';
 
+my $bt = Film->create_test_film;
 ok my $btaste = Film::Threat->retrieve('Bad Taste'), "subclass retrieve";
 isa_ok $btaste => "Film::Threat";
 isa_ok $btaste => "Film";

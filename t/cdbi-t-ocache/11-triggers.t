@@ -9,14 +9,11 @@ BEGIN {
 	eval "use Cache::MemoryCache";
 	plan skip_all => "needs Cache::Cache for testing" if $@;
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 11);
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 13);
 }
 
-INIT {
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	Film->CONSTRUCT;
-}
+use lib 't/cdbi-t/testlib';
+use Film;
 
 sub create_trigger2 { ::ok(1, "Running create trigger 2"); }
 sub delete_trigger  { ::ok(1, "Deleting " . shift->Title) }
@@ -38,7 +35,8 @@ Film->add_trigger(
 );
 
 ok(
-	my $ver = Film->create({
+	my $ver = Film->insert(
+		{
 			title    => 'La Double Vie De Veronique',
 			director => 'Kryzstof Kieslowski',
 
@@ -59,7 +57,17 @@ is + (
 			. $ver->table
 			. ' WHERE '
 			. $ver->primary_column . ' = '
-			. $ver->db_Main->quote($ver->id))
+			. $ver->db_Main->quote($ver->id)
+	)
 )->[0]->[0], 1, "Updated database's sheep count";
 ok $ver->delete, "Delete";
 
+{
+	Film->add_trigger(
+		before_create => sub {
+			my $self = shift;
+			ok !$self->_attribute_exists('title'), "PK doesn't auto-vivify";
+		}
+	);
+	Film->insert({ director => "Me" });
+}

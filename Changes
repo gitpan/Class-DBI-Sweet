@@ -1,5 +1,20 @@
 Revision history for Perl extension Class::DBI::Sweet
 
+0.07  Mon Dec 12 10:37:00 2005
+        - Updated to work properly with Class::DBI v3.1.2
+
+0.06
+        - Moved UUID check to only die if user has selected uuid as their
+          sequence
+
+        - Provide a way to use named custom SQL fragments and which
+          bits of SQL are replaced in the "%s" substitutions.  Useful
+          for aggregate and GROUP BY queries.  New "attributes" added:
+
+            sql_method : select the sql fragment used for COUNT(*)/SELECT
+            statement_order : define which sql chunks and order are used
+                in the "%s" substitution string.
+
 0.05  
         - No longer require Data::UUID/Win32API::GUID in Build.PL.
         - Multi-step joins added for search

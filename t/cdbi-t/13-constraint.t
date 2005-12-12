@@ -3,14 +3,11 @@ use Test::More;
 
 BEGIN {
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 23);
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 28);
 }
 
-INIT {
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	Film->CONSTRUCT;
-}
+use lib 't/cdbi-t/testlib';
+use Film;
 
 sub valid_rating {
 	my $value = shift;
@@ -29,52 +26,61 @@ my %info = (
 {
 	local $info{Title}  = "nonsense";
 	local $info{Rating} = 19;
-	eval { Film->create({%info}) };
+	eval { Film->insert({%info}) };
 	ok $@, $@;
 	ok !Film->retrieve($info{Title}), "No film created";
-	is(Film->retrieve_all, 1, "Only one film");
+	is(Film->retrieve_all, 0, "So no films");
 }
 
-ok(my $ver = Film->create({%info}), "Can create with valid rating");
+ok(my $ver = Film->insert({%info}), "Can insert with valid rating");
 is $ver->Rating, 18, "Rating 18";
 
 ok $ver->Rating(12), "Change to 12";
 ok $ver->update, "And update";
 is $ver->Rating, 12, "Rating now 12";
 
-eval {
-	$ver->Rating(13);
-	$ver->update;
-};
-ok $@, $@;
-is $ver->Rating, 12, "Rating still 12";
-ok $ver->delete, "Delete";
+{
+	local *Film::_croak = sub { 
+		my ($self, $msg, %info) = @_;
+		die %info ?  bless \%info => "My::Error" : $msg;
+	};
+	eval {
+		$ver->Rating(13);
+		$ver->update;
+	};
+	isa_ok $@ => 'My::Error';
+	my $fail = $@->{data}{rating}{data};
+	is $fail->{column}->name_lc, "rating", "Rating fails";
+	is $fail->{value}, 13, "Can't set to 13";
+	is $ver->Rating, 12, "Rating still 12";
+	ok $ver->delete, "Delete";
+}
 
 # this threw an infinite loop in old versions
 Film->add_constraint('valid director', Director => sub { 1 });
-my $fred = Film->create({ Rating => '12' });
+my $fred = Film->insert({ Rating => '12' });
 
-# this test is a bit problematical because we don't supply a primary key
+# this test is a bit problematic because we don't supply a primary key
 # to the create() and the table doesn't use auto_increment or a sequence.
 ok $fred, "Got fred";
 
 {
 	ok +Film->constrain_column(rating => [qw/U PG 12 15 19/]),
-		"constraint_column";
-	my $narrower = eval { Film->create({ Rating => 'Uc' }) };
+		"constrain_column";
+	my $narrower = eval { Film->insert({ Rating => 'Uc' }) };
 	like $@, qr/fails.*constraint/, "Fails listref constraint";
-	my $ok = eval { Film->create({ Rating => 'U' }) };
-	is $@, '', "Can create with rating U";
-	ok +Film->find_column('rating')->is_constrained, "Rating is constrained";
+	my $ok = eval { Film->insert({ Rating => 'U' }) };
+	is $@, '', "Can insert with rating U";
+	ok +Film->find_column('rating')->is_constrained,   "Rating is constrained";
 	ok +Film->find_column('director')->is_constrained, "Director is not";
 }
 
 {
 	ok +Film->constrain_column(title => qr/The/), "constraint_column";
-	my $inferno = eval { Film->create({ Title => 'Towering Infero' }) };
-	like $@, qr/fails.*constraint/, "Can't create towering inferno";
-	my $the_inferno = eval { Film->create({ Title => 'The Towering Infero' }) };
-	is $@, '', "But can create THE towering inferno";
+	my $inferno = eval { Film->insert({ Title => 'Towering Infero' }) };
+	like $@, qr/fails.*constraint/, "Can't insert towering inferno";
+	my $the_inferno = eval { Film->insert({ Title => 'The Towering Infero' }) };
+	is $@, '', "But can insert THE towering inferno";
 }
 
 {
@@ -91,9 +97,17 @@ ok $fred, "Got fred";
 	eval { Film->constrain_column(codirector => Untaint => 'date') };
 	is $@, '', 'Can constrain with untaint';
 	my $freeaa =
-		eval { Film->create({ title => "The Freaa", codirector => 'today' }) };
-	is $@, '', "Can create codirector";
+		eval { Film->insert({ title => "The Freaa", codirector => 'today' }) };
+	is $@, '', "Can insert codirector";
 	is $freeaa->codirector, '2001-03-03', "Set the codirector";
+}
+
+{
+	ok +Film->constrain_column(title => sub { length() <= 10 }), "and again";
+	my $toolong = eval { Film->insert({ Title => 'The Wonderful' }) };
+	like $@, qr/fails.*constraint/, "Can't insert too long title";
+	my $then = eval { Film->insert({ Title => 'The Blob' }) };
+	is $@, '', "But can insert The XXX";
 }
 
 __DATA__

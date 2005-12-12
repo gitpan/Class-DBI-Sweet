@@ -13,29 +13,29 @@ BEGIN {
 INIT {
 	use lib 't/cdbi-t/testlib';
 	use Lazy;
-	Lazy->CONSTRUCT;
 }
 
-ok(eq_set([ Lazy->columns('Primary') ],        [qw/this/]),      "Pri");
-ok(eq_set([ sort Lazy->columns('Essential') ], [qw/opop this/]), "Essential");
-ok(eq_set([ sort Lazy->columns('things') ],    [qw/that this/]), "things");
-ok(eq_set([ sort Lazy->columns('horizon') ],   [qw/eep orp/]),   "horizon");
-ok(eq_set([ sort Lazy->columns('vertical') ],  [qw/oop opop/]),  "vertical");
-ok(eq_set([ sort map { $_->name } Lazy->columns('All') ], [qw/eep oop opop orp this that/]),
-	"All");
+is_deeply [ Lazy->columns('Primary') ],        [qw/this/],      "Pri";
+is_deeply [ sort Lazy->columns('Essential') ], [qw/opop this/], "Essential";
+is_deeply [ sort Lazy->columns('things') ],    [qw/that this/], "things";
+is_deeply [ sort Lazy->columns('horizon') ],   [qw/eep orp/],   "horizon";
+is_deeply [ sort Lazy->columns('vertical') ],  [qw/oop opop/],  "vertical";
+is_deeply [ sort Lazy->columns('All') ], [qw/eep oop opop orp that this/],
+	"All";
 
 {
 	my @groups = Lazy->__grouper->groups_for(Lazy->find_column('this'));
-	ok eq_set([ sort @groups ], [qw/things Essential Primary/]),
+	is_deeply [ sort @groups ], [qw/Essential Primary things/],
 		"this (@groups)";
 }
 
 {
 	my @groups = Lazy->__grouper->groups_for(Lazy->find_column('that'));
-	ok eq_set(\@groups, [qw/things/]), "that (@groups)";
+	is_deeply [@groups], [qw/things/], "that (@groups)";
+
 }
 
-Lazy->create({ this => 1, that => 2, oop => 3, opop => 4, eep => 5 });
+Lazy->insert({ this => 1, that => 2, oop => 3, opop => 4, eep => 5 });
 
 ok(my $obj = Lazy->retrieve(1), 'Retrieve by Primary');
 ok($obj->_attribute_exists('this'),  "Gets primary");
@@ -62,17 +62,17 @@ ok(!$obj->_attribute_exists('that'), 'nor that');
 # Test contructor breaking.
 
 eval {    # Need a hashref
-	Lazy->create(this => 10, that => 20, oop => 30, opop => 40, eep => 50);
+	Lazy->insert(this => 10, that => 20, oop => 30, opop => 40, eep => 50);
 };
 ok($@, $@);
 
 eval {    # False column
-	Lazy->create({ this => 10, that => 20, theother => 30 });
+	Lazy->insert({ this => 10, that => 20, theother => 30 });
 };
 ok($@, $@);
 
 eval {    # Multiple false columns
-	Lazy->create({ this => 10, that => 20, theother => 30, andanother => 40 });
+	Lazy->insert({ this => 10, that => 20, theother => 30, andanother => 40 });
 };
 ok($@, $@);
 

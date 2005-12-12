@@ -77,7 +77,7 @@ SYNOPSIS
         my ($next) = $cd->retrieve_next( { 'tags.tag' => $tag },
                                            { order_by => 'title' } );
 
-        MyApp::CD->search( { 'liner_notes.notes' => { "!=", undef } } );
+        MyApp::CD->search( { 'liner_notes.notes' => { "!=" => undef } } );
 
         MyApp::CD->count(
                { 'year' => { '>', 1998 }, 'tags.tag' => 'Cheesy',
@@ -185,6 +185,130 @@ RETRIEVING OBJECTS
         testing or for causing the entire query to be retrieved initially
         when the resultset cache is used.
 
+        This is also useful when using custom SQL via "set_sql" and setting
+        "sql_method" (see below) where a COUNT(*) may not make sense (i.e.
+        when the COUNT(*) might be as expensive as just running the full
+        query and just slicing the iterator).
+
+    sql_method
+        This sets the name of the sql fragment to use as previously set by a
+        "set_sql" call. The default name is "Join_Retrieve" and the
+        associated default sql fragment set in this class is:
+
+            __PACKAGE__->set_sql( Join_Retrieve => <<'SQL' );
+            SELECT __ESSENTIAL(me)__%s
+            FROM   %s
+            WHERE  %s
+            SQL
+
+        You may override this in your table or base class using the same
+        name and CDBI::Sweet will use your custom fragment, instead.
+
+        If you need to use more than one sql fragment in a given class you
+        may create a new sql fragment and then specify its name using the
+        "sql_method" attribute.
+
+        The %s strings are replaced by sql parts as described in Ima::DBI.
+        See "statement_order" for the sql part that replaces each instance
+        of %s.
+
+        In addition, the associated statment for COUNT(*) statement has
+        "_Count" appended to the sql_method name. Only "from" and "where"
+        are passed to the sprintf function.
+
+        The default sql fragment used for "Join_Retrieve" is:
+
+            __PACKAGE__->set_sql( Join_Retrieve_Count => <<'SQL' );
+            SELECT COUNT(*)
+            FROM   %s
+            WHERE  %s
+            SQL
+
+        If you create a custom sql method (and set the "sql_method"
+        attribute) then you will likely need to also create an associated
+        _Count fragment. If you do not have an associated _Count, and wish
+        to call the "page" method, then set "disable_sql_paging" to true and
+        your result set from the select will be spliced to return the page
+        you request.
+
+        Here's an example.
+
+        Assume a CD has_a Artist (and thus Artists have_many CDs), and you
+        wish to return a list of artists and how many CDs each have:
+
+        In package MyDB::Artist
+
+            __PACKAGE__->columns( TEMP => 'cd_count');
+
+            __PACKAGE__->set_sql( 'count_by_cd', <<'');
+                SELECT      __ESSENTIAL(me)__, COUNT(cds.cdid) as cd_count
+                FROM        %s                  -- ("from")
+                WHERE       %s                  -- ("where")
+                GROUP BY    __ESSENTIAL(me)__
+                %s %s                           -- ("limit" and "order_by")
+
+        Then in your application code:
+
+            my ($pager, $iterator) = MyDB::Artist->page(
+                {
+                    'cds.title'    => { '!=', undef },
+                },
+                {
+                    sql_method          => 'count_by_cd',
+                    statement_order     => [qw/ from where limit order_by / ],
+                    disable_sql_paging  => 1,
+                    order_by            => 'cd_count desc',
+                    rows                => 10,
+                    page                => 1,
+                } );
+
+        The above generates the following SQL:
+
+            SELECT      me.artistid, me.name, COUNT(cds.cdid) as cd_count
+            FROM        artist me, cd cds
+            WHERE       ( cds.title IS NOT NULL ) AND me.artistid = cds.artist
+            GROUP BY    me.artistid, me.name
+            ORDER BY    cd_count desc
+
+        The one caveat is that Sweet cannot figure out the has_many joins
+        unless you specify them in the $criteria. In the previous example
+        that's done by asking for all cd titles that are not null (which
+        should be all).
+
+        To fetch a list like above but limited to cds that were created
+        before the year 2000, you might do:
+
+            my ($pager, $iterator) = MyDB::Artist->page(
+                {
+                    'cds.year'  => { '<', 2000 },
+                },
+                {
+                    sql_method          => 'count_by_cd',
+                    statement_order     => [qw/ from where limit order_by / ],
+                    disable_sql_paging  => 1,
+                    order_by            => 'cd_count desc',
+                    rows                => 10,
+                    page                => 1,
+                } );
+
+    statement_order
+        Specifies a list reference of SQL parts that are replaced in the SQL
+        fragment (which is defined with "sql_method" above). The available
+        SQL parts are:
+
+            prefetch_cols from where order_by limit sql prefetch_names
+
+        The "sql" part is shortcut notation for these three combined:
+
+            where order_by limit
+
+        Prefecch_cols are the columns selected when a prefetch is speccified
+        -- use in the SELECT. Prefetch_names are just the column names for
+        use in GROUP BY.
+
+        This is useful when statement order needs to be changed, such as
+        when using a GROUP BY:
+
   count
     Returns a count of the number of rows matching the criteria. "count"
     will discard "offset", "order_by", and "rows".
@@ -198,7 +322,7 @@ RETRIEVING OBJECTS
         @objects  = MyApp::Article->search(%criteria);
 
         $iterator = MyApp::Article->search(%criteria);
-    
+
   search_like
     As search but adds the attribute { cmp => 'like' }.
 
@@ -211,7 +335,7 @@ RETRIEVING OBJECTS
 
         printf( "Results %d - %d of %d Found\n",
             $page->first, $page->last, $page->total_entries );
-        
+
   pager
     An alias to page.
 
@@ -254,8 +378,9 @@ CACHING OBJECTS
         and store it in the cache.
 
     create
+    insert
         All caches for this table are marked stale and will be re-cached on
-        next retrieval.
+        next retrieval. create is an alias kept for backwards compability.
 
     retrieve
         On a cache hit the object will be inflated by the "select" trigger

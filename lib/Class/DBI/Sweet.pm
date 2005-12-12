@@ -25,7 +25,7 @@ else {
 
 our $UUID_Is_Available = ($@ ? 0 : 1);
 
-our $VERSION = '0.05';
+our $VERSION = '0.07';
 
 #----------------------------------------------------------------------
 # RETRIEVING
@@ -36,7 +36,7 @@ __PACKAGE__->data_type(
     __OFFSET => DBI::SQL_INTEGER
 );
 
-__PACKAGE__->set_sql( Join_Count => <<'SQL' );
+__PACKAGE__->set_sql( Join_Retrieve_Count => <<'SQL' );
 SELECT COUNT(*)
 FROM   %s
 WHERE  %s
@@ -117,10 +117,13 @@ sub count {
     # no need for LIMIT/OFFSET and ORDER BY in COUNT(*)
     delete @{$count}{qw( rows offset order_by )};
 
-    my ( $sql, $from, $classes, $columns, $values )
+    my ( $sql_parts, $classes, $columns, $values )
         = $proto->_search( $criteria, $count );
 
-    my $sth = $class->sql_Join_Count( $from, $sql );
+    my $sql_method = 'sql_' . ($attributes->{sql_method} || 'Join_Retrieve');
+    $sql_method .= '_Count';
+
+    my $sth = $class->$sql_method( @{%$sql_parts}{qw/ from where /} );
 
     $class->_bind_param( $sth, $columns );
 
@@ -135,18 +138,27 @@ sub page {
 
     my ( $criteria, $attributes ) = $proto->_search_args(@_);
 
-    my $total   = $class->count( $criteria, $attributes );
-    my $rows    = $attributes->{rows} || 10;
-    my $current = $attributes->{page} || 1;
+    $attributes->{rows} ||= 10;
+    $attributes->{page} ||= 1;
+    $attributes->{_pager} = '';  # Flag that we need a pager.  How ugly!
 
-    my $page = Data::Page->new( $total, $rows, $current );
+    # No point doing a count(*) if fetching all anyway
+    unless ( $attributes->{disable_sql_paging} ) {
 
-    $attributes->{rows}   = $page->entries_per_page;
-    $attributes->{offset} = $page->skipped;
+        my $page = Data::Page->new(
+            $class->count( $criteria, $attributes ),
+            $attributes->{rows},
+            $attributes->{page},
+        );
+
+        $attributes->{offset} = $page->skipped;
+        $attributes->{_pager} = $page;
+
+    }
 
     my $iterator = $class->search( $criteria, $attributes );
 
-    return ( $page, $iterator );
+    return ( $attributes->{_pager}, $iterator );
 }
 
 sub retrieve_all {
@@ -190,12 +202,14 @@ sub _do_search {
         }
     }
 
-    my ( $sql, $from, $classes, $columns, $values )
+    my ( $sql_parts, $classes, $columns, $values )
         = $class->_search( $criteria, $attributes );
 
     my $cache_key;
 
     if ( $class->cache && $attributes->{use_resultset_cache}) {
+
+        my $sql = join '', @{%$sql_parts}{qw/ where from order_by limit /};
 
         $cache_key = $class->_resultset_cache_key($sql, $values,
                                                   $attributes->{prefetch});
@@ -262,22 +276,47 @@ sub _do_search {
                [ 'MISS', $cache_key ]) if $attributes->{profile_cache};
     }
 
-    my $pre_fields = '';
+    my $pre_fields = '';  # Used in SELECT
+    my $pre_names  = '';  # for use in GROUP BY
 
     if ($attributes->{prefetch}) {
         $pre_fields .= ", '".join(' ', @{$attributes->{prefetch}})
                            ."' AS sweet__joins";
+
         my $jnum = 0;
         foreach my $pre (@{$attributes->{prefetch}}) {
             $jnum++;
             my $f_class = $classes->{$pre};
             foreach my $col ($f_class->columns('Essential')) {
+                $pre_names  .= ", ${pre}.${col}";
                 $pre_fields .= ", ${pre}.${col} AS sweet__${jnum}_${col}";
             }
         }
     }
 
-    my $sth = $class->sql_Join_Retrieve( $pre_fields, $from, $sql );
+    $sql_parts->{prefetch_cols} = $pre_fields;
+    $sql_parts->{prefetch_names} = $pre_names;
+
+    my $sql_method = 'sql_' . ($attributes->{sql_method} || 'Join_Retrieve');
+
+    my $statement_order = $attributes->{statement_order}
+        || [qw/ prefetch_cols from sql / ];
+
+    my @sql_parts;
+    for my $part ( @$statement_order ) {
+        # For backward compatibility
+        if ( $part eq 'sql' ) {
+            push @sql_parts, join ' ', @{%$sql_parts}{qw/ where order_by limit/};
+            next;
+        }
+        if ( exists $sql_parts->{ $part } ) {
+            push @sql_parts, $sql_parts->{ $part };
+            next;
+        }
+        die "'statement_order' setting of [$part] is invalid";
+    }
+
+    my $sth = $class->$sql_method( @sql_parts );
 
     $class->_bind_param( $sth, $columns );
 
@@ -303,8 +342,21 @@ sub _do_search {
 sub _slice_iter {
     my ( $class, $attributes, $iterator) = @_;
 
+    # Create pager if doesn't already exist
+    if ( exists $attributes->{_pager} && ! $attributes->{_pager} ) {
+
+        $attributes->{_pager} = Data::Page->new(
+            $iterator->count,
+            $attributes->{rows},
+            $attributes->{page},
+        );
+
+        $attributes->{offset} = $attributes->{_pager}->skipped;
+    }
+
     # If RDBM is not ROWS/OFFSET supported, slice iterator
     if ( $attributes->{rows} && $iterator->count > $attributes->{rows} ) {
+
 
         my $rows   = $attributes->{rows};
         my $offset = $attributes->{offset} || 0;
@@ -332,9 +384,10 @@ sub _search {
         = Class::DBI::Sweet::SQL::Abstract->new( %params,
                                                    bindtype => 'columns' );
 
+
+
     my ( $sql, $from, $classes, @bind )
-        = $abstract->where( $criteria, $attributes->{order_by},
-                                $attributes->{prefetch} );
+        = $abstract->where( $criteria, '', $attributes->{prefetch} );
 
     my ( @columns, @values, %cache );
 
@@ -343,9 +396,25 @@ sub _search {
       push( @values,  @{$bind}[1..$#$bind] );
     }
 
-    unless ( $sql =~ /^\s*WHERE/i ) {
+
+    unless ( $sql =~ /^\s*WHERE/i ) {  # huh? This is either WHERE.. or empty string.
         $sql = "WHERE 1=1 $sql"
     }
+
+    $sql =~ s/^\s*(WHERE)\s*//i;
+
+
+    my %sql_parts = (
+        where       => $sql,
+        from        => $from,
+        limit       => '',
+        order_by    => '',
+    );
+
+    $sql_parts{order_by} = $abstract->_order_by( $attributes->{order_by} )
+        if $attributes->{order_by};
+
+
 
     if ( $attributes->{rows} && !$attributes->{disable_sql_paging}) {
 
@@ -354,27 +423,26 @@ sub _search {
         my $driver = lc $class->db_Main->{Driver}->{Name};
 
         if ( $driver =~ /^(maxdb|mysql|mysqlpp)$/ ) {
-            $sql .= ' LIMIT ?, ?';
+            $sql_parts{limit} = ' LIMIT ?, ?';
             push( @columns, '__OFFSET', '__ROWS' );
             push( @values, $offset, $rows );
         }
 
-        if ( $driver =~ /^(pg|pgpp|sqlite|sqlite2)$/ ) {
-            $sql .= ' LIMIT ? OFFSET ?';
+        elsif ( $driver =~ /^(pg|pgpp|sqlite|sqlite2)$/ ) {
+            $sql_parts{limit} = ' LIMIT ? OFFSET ?';
             push( @columns, '__ROWS', '__OFFSET' );
             push( @values, $rows, $offset );
         }
 
-        if ( $driver =~ /^(interbase)$/ ) {
-            $sql .= ' ROWS ? TO ?';
+        elsif ( $driver =~ /^(interbase)$/ ) {
+            $sql_parts{limit} = ' ROWS ? TO ?';
             push( @columns, '__ROWS', '__OFFSET' );
             push( @values, $rows, $offset + $rows );
         }
     }
-    
-    $sql =~ s/^\s*(WHERE)\s*//i;
 
-    return ( $sql, $from, $classes, \@columns, \@values );
+
+    return ( \%sql_parts, $classes, \@columns, \@values );
 }
 
 sub _search_args {
@@ -397,10 +465,14 @@ sub _search_args {
         $attributes = @_ % 2 ? pop(@_) : {};
         $criteria   = {@_};
     }
-    
-    return ( $criteria,
-              { %{ $proto->default_search_attributes },
-                %{ $attributes } } );
+
+
+    # Need to pass things in $attributes, so don't create a new hash
+    for my $key ( keys %{ $proto->default_search_attributes } ) {
+        $attributes->{$key} ||= $proto->default_search_attributes->{$key};
+    }
+
+    return ( $criteria, $attributes );
 }
 
 #----------------------------------------------------------------------
@@ -511,7 +583,7 @@ sub _init {
             }
         }
     }
-                
+
     $object->_attribute_store(%$data);
 
     if ( $class->cache and $key ) {
@@ -546,14 +618,16 @@ sub retrieve {
     return $class->SUPER::retrieve(@_);
 }
 
-sub create {
+*create = \&insert;
+
+sub insert {
     my $self = shift;
 
     if ( $self->cache ) {
         $self->cache->set( $self->_staleness_cache_key, time() );
     }
 
-    return $self->SUPER::create(@_);
+    return $self->SUPER::insert(@_);
 }
 
 sub update {
@@ -587,9 +661,9 @@ sub delete {
 sub _next_in_sequence {
     my $self = shift;
 
-    die "UUID features not available" unless $UUID_Is_Available;
-
     if ( lc $self->sequence eq 'uuid' ) {
+
+        die "UUID features not available" unless $UUID_Is_Available;
 
         if ( $^O eq 'MSWin32' ) {
             return Win32API::GUID::CreateGuid();
@@ -625,7 +699,7 @@ sub where {
     }
 
     my $sql = '';
-            
+
     my (@ret) = $self->_recurse_where($where);
 
     if (@ret) {
@@ -649,9 +723,9 @@ sub where {
     }
 
     # order by?
-    if ($order) {
-        $sql .= $self->_order_by($order);
-    }
+    #if ($order) {
+    #    $sql .= $self->_order_by($order);
+    #}
 
     delete $self->{cdbi_column_cache};
 
@@ -840,7 +914,7 @@ __END__
     my ($next) = $cd->retrieve_next( { 'tags.tag' => $tag },
                                        { order_by => 'title' } );
 
-    MyApp::CD->search( { 'liner_notes.notes' => { "!=", undef } } );
+    MyApp::CD->search( { 'liner_notes.notes' => { "!=" => undef } } );
 
     MyApp::CD->count(
            { 'year' => { '>', 1998 }, 'tags.tag' => 'Cheesy',
@@ -960,6 +1034,127 @@ paging by slicing the iterator at the end of ->search (which it normally only
 uses as a fallback mechanism). Useful for testing or for causing the entire
 query to be retrieved initially when the resultset cache is used.
 
+This is also useful when using custom SQL via C<set_sql> and setting
+C<sql_method> (see below) where a COUNT(*) may not make sense (i.e. when
+the COUNT(*) might be as expensive as just running the full query and just slicing
+the iterator).
+
+=item sql_method
+
+This sets the name of the sql fragment to use as previously set by a
+C<set_sql> call.  The default name is "Join_Retrieve" and the associated
+default sql fragment set in this class is:
+
+    __PACKAGE__->set_sql( Join_Retrieve => <<'SQL' );
+    SELECT __ESSENTIAL(me)__%s
+    FROM   %s
+    WHERE  %s
+    SQL
+
+You may override this in your table or base class using the same name and CDBI::Sweet
+will use your custom fragment, instead.
+
+If you need to use more than one sql fragment in a given class you may create a new
+sql fragment and then specify its name using the C<sql_method> attribute.
+
+The %s strings are replaced by sql parts as described in L<Ima::DBI>.  See
+"statement_order" for the sql part that replaces each instance of %s.
+
+In addition, the associated statment for COUNT(*) statement has "_Count"
+appended to the sql_method name.  Only "from" and "where" are passed to the sprintf
+function.
+
+The default sql fragment used for "Join_Retrieve" is:
+
+    __PACKAGE__->set_sql( Join_Retrieve_Count => <<'SQL' );
+    SELECT COUNT(*)
+    FROM   %s
+    WHERE  %s
+    SQL
+
+If you create a custom sql method (and set the C<sql_method> attribute) then
+you will likely need to also create an associated _Count fragment.  If you do
+not have an associated _Count, and wish to call the C<page> method,  then set
+C<disable_sql_paging> to true and your result set from the select will be spliced
+to return the page you request.
+
+Here's an example.
+
+Assume a CD has_a Artist (and thus Artists have_many CDs), and you wish to
+return a list of artists and how many CDs each have:
+
+In package MyDB::Artist
+
+    __PACKAGE__->columns( TEMP => 'cd_count');
+
+    __PACKAGE__->set_sql( 'count_by_cd', <<'');
+        SELECT      __ESSENTIAL(me)__, COUNT(cds.cdid) as cd_count
+        FROM        %s                  -- ("from")
+        WHERE       %s                  -- ("where")
+        GROUP BY    __ESSENTIAL(me)__
+        %s %s                           -- ("limit" and "order_by")
+
+Then in your application code:
+
+    my ($pager, $iterator) = MyDB::Artist->page(
+        {
+            'cds.title'    => { '!=', undef },
+        },
+        {
+            sql_method          => 'count_by_cd',
+            statement_order     => [qw/ from where limit order_by / ],
+            disable_sql_paging  => 1,
+            order_by            => 'cd_count desc',
+            rows                => 10,
+            page                => 1,
+        } );
+
+The above generates the following SQL:
+
+    SELECT      me.artistid, me.name, COUNT(cds.cdid) as cd_count
+    FROM        artist me, cd cds
+    WHERE       ( cds.title IS NOT NULL ) AND me.artistid = cds.artist
+    GROUP BY    me.artistid, me.name
+    ORDER BY    cd_count desc
+
+The one caveat is that Sweet cannot figure out the has_many joins unless you
+specify them in the $criteria.  In the previous example that's done by asking
+for all cd titles that are not null (which should be all).
+
+To fetch a list like above but limited to cds that were created before the year
+2000, you might do:
+
+    my ($pager, $iterator) = MyDB::Artist->page(
+        {
+            'cds.year'  => { '<', 2000 },
+        },
+        {
+            sql_method          => 'count_by_cd',
+            statement_order     => [qw/ from where limit order_by / ],
+            disable_sql_paging  => 1,
+            order_by            => 'cd_count desc',
+            rows                => 10,
+            page                => 1,
+        } );
+
+
+=item statement_order
+
+Specifies a list reference of SQL parts that are replaced in the SQL fragment (which
+is defined with "sql_method" above).  The available SQL parts are:
+
+    prefetch_cols from where order_by limit sql prefetch_names
+
+The "sql" part is shortcut notation for these three combined:
+
+    where order_by limit
+
+Prefecch_cols are the columns selected when a prefetch is speccified -- use in the SELECT.
+Prefetch_names are just the column names for use in GROUP BY.
+
+This is useful when statement order needs to be changed, such as when using a
+GROUP BY:
+
 =back
 
 =head2 count
@@ -977,7 +1172,7 @@ context.
     @objects  = MyApp::Article->search(%criteria);
 
     $iterator = MyApp::Article->search(%criteria);
-    
+
 =head2 search_like
 
 As search but adds the attribute { cmp => 'like' }.
@@ -992,7 +1187,7 @@ L<Data::Page>.
 
     printf( "Results %d - %d of %d Found\n",
         $page->first, $page->last, $page->total_entries );
-        
+
 =head2 pager
 
 An alias to page.
@@ -1047,8 +1242,10 @@ it in the cache.
 
 =item create
 
+=item insert 
+
 All caches for this table are marked stale and will be re-cached on next
-retrieval.
+retrieval. create is an alias kept for backwards compability.
 
 =item retrieve
 

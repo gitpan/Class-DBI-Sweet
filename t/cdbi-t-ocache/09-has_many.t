@@ -9,32 +9,40 @@ BEGIN {
 	eval "use Cache::MemoryCache";
 	plan skip_all => "needs Cache::Cache for testing" if $@;
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 30);
-
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	use Actor;
-	Film->CONSTRUCT;
-	Actor->CONSTRUCT;
-	Film->has_many(actors => Actor => 'Film', { order_by => 'name' });
-	Actor->has_a(Film => 'Film');
-	is(Actor->primary_column, 'id', "Actor primary OK");
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 42);
 }
+
+use lib 't/cdbi-t/testlib';
+use Film;
+use Actor;
+use Director;
+
+Film->has_many(actors => Actor => 'Film', { order_by => 'name' });
+Director->has_many(films => Film => 'Director', { order_by => 'title' });
+Director->has_many(
+	r_rated_films =>
+		Film        => 'Director',
+	{ order_by => 'title', constraint => { Rating => 'R' } }
+);
+
+Actor->has_a(Film => 'Film');
+is(Actor->primary_column, 'id', "Actor primary OK");
 
 ok(Actor->can('Salary'), "Actor table set-up OK");
 ok(Film->can('actors'),  " and have a suitable method in Film");
 
+Film->create_test_film;
 ok(my $btaste = Film->retrieve('Bad Taste'), "We have Bad Taste");
 
 ok(
-	my $pvj = Actor->create(
+	my $pvj = Actor->insert(
 		{
 			Name   => 'Peter Vere-Jones',
 			Film   => undef,
 			Salary => '30_000',             # For a voice!
 		}
 	),
-	'create Actor'
+	'insert Actor'
 );
 is $pvj->Name, "Peter Vere-Jones", "PVJ name ok";
 is $pvj->Film, undef, "No film";
@@ -78,13 +86,13 @@ is $pvj->Name, "Peter Vere-Jones", "PVJ still ok";
 }
 
 eval {
-	my @actors = $btaste->actors(Name => $pj->Name);
+	my @actors = $btaste->actors({Name => $pj->Name});
 	is @actors, 1, "One actor from restricted (sorted) has_many";
 	is $actors[0]->Name, $pj->Name, "It's PJ";
 };
 is $@, '', "No errors";
 
-my $as = Actor->create(
+my $as = Actor->insert(
 	{
 		Name   => 'Arnold Schwarzenegger',
 		Film   => 'Terminator 2',
@@ -111,4 +119,70 @@ eval { my $name = $as->set_Name };
 ok $@, $@;
 
 is($as->Name, 'Arnold Schwarzenegger', "Arnie's still Arnie");
+
+ok(my $director = Director->insert({ Name => 'Director 1', }),
+	'insert Director');
+
+ok(
+	$director->add_to_films(
+		{
+			Title    => 'Film 1',
+			Director => 'Director 1',
+			Rating   => 'PG',
+		}
+	),
+	'add_to_films'
+);
+
+ok(
+	$director->add_to_r_rated_films(
+		{
+			Title    => 'Film 2',
+			Director => 'Director 1',
+		}
+	),
+	'add_to_r_rated_films'
+);
+
+eval {
+	$director->add_to_r_rated_films(
+		{
+			Title    => 'Film 3',
+			Director => 'Director 1',
+			Rating   => 'G',
+		}
+	);
+};
+ok $@, $@;
+
+{
+	my @films = $director->films;
+	is(@films, 2, "Director 1 has three films");
+	is $films[0]->Title,  "Film 1", "Film 1";
+	is $films[0]->Rating, "PG",     "is PG";
+	is $films[1]->Title,  "Film 2", "Film 2";
+	is $films[1]->Rating, "R",      "is R";
+}
+
+{
+	my @films = $director->r_rated_films;
+	is @films, 1, "... but only 1 R-Rated";
+	is $films[0]->Title, "Film 2", "- Film 2";
+}
+
+# Subclass can override has_many
+
+package Film::Subclass;
+
+use base 'Film';
+
+eval { 
+	Film::Subclass->has_many(actors => Actor => 'Film', { order_by => 'id' });
+};
+
+package main;
+
+ok ! $@, "We can set up a has_many subclass";
+
+
 

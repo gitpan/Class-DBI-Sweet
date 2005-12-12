@@ -1,5 +1,5 @@
 use strict;
-use Test::More tests => 35;
+use Test::More tests => 26;
 
 #-----------------------------------------------------------------------
 # Make sure that we can set up columns properly
@@ -7,28 +7,23 @@ use Test::More tests => 35;
 package State;
 
 use base 'Class::DBI::Sweet';
+use Class::DBI::Column;
 
 State->table('State');
-State->columns('Primary',   'Name');
-State->columns('Essential', qw/Abbreviation/);
-State->columns('Weather',   qw/Rain Snowfall/);
-State->columns('Other',     qw/Capital Population/);
+State->columns(Essential => qw/Abbreviation Name/);
+State->columns(Primary   => 'Name');
+State->columns(Weather => qw/Snowfall/,
+	Class::DBI::Column->new('Rain', { accessor => 'Rainfall' })
+);
+State->columns(Other => qw/Capital Population/);
 State->has_many(cities => "City");
 
-sub accessor_name {
+sub mutator_name_for {
 	my ($class, $column) = @_;
-	my $return = $column eq "Rain" ? "Rainfall" : $column;
-	return $return;
-}
-
-sub mutator_name {
-	my ($class, $column) = @_;
-	my $return = $column eq "Rain" ? "set_Rainfall" : "set_$column";
-	return "set_$column";
+	return "set_" . $column->accessor;
 }
 
 sub Snowfall { 1 }
-
 
 package City;
 
@@ -37,7 +32,6 @@ use base 'Class::DBI::Sweet';
 City->table('City');
 City->columns(All => qw/Name State Population/);
 City->has_a(State => 'State');
-
 
 #-------------------------------------------------------------------------
 package CD;
@@ -71,31 +65,25 @@ is_deeply [ sort CD->columns('Essential') ] => [qw/artist/],
 {
 	local $SIG{__WARN__} = sub { ok 1, "Error thrown" };
 	ok(!State->columns('Nonsense'), "No Nonsense group");
-	ok(State->is_column('capital'), 'is_column deprecated');
 }
-ok(State->find_column('Rain'), 'find_column Rain');
-ok(State->find_column('rain'), 'find_column rain');
+ok(State->find_column('Rain'),        'find_column Rain');
+ok(State->find_column('rain'),        'find_column rain');
 ok(!State->find_column('HGLAGAGlAG'), '!find_column HGLAGAGlAG');
 
-ok(!State->can('Rain'), 'No Rain accessor set up');
-ok(State->can('Rainfall'),           'Rainfall accessor set up');
-ok(State->can('_Rainfall_accessor'), ' with correct alias');
-ok(!State->can('_Rain_accessor'), ' (not by colname)');
-ok(!State->can('rain'),           ' (not normalized)');
-ok(State->can('set_Rain'),           'overriden mutator');
-ok(State->can('_set_Rain_accessor'), ' with alias');
+can_ok +State => qw/Rainfall _Rainfall_accessor set_Rainfall
+	_set_Rainfall_accessor Snowfall _Snowfall_accessor set_Snowfall
+	_set_Snowfall_accessor/;
 
-ok(State->can('Snowfall'),           'overridden accessor set up');
-ok(State->can('_Snowfall_accessor'), ' with alias');
-ok(!State->can('snowfall'), ' (not normalized)');
-ok(State->can('set_Snowfall'),           'overriden mutator');
-ok(State->can('_set_Snowfall_accessor'), ' with alias');
+foreach my $method (qw/Rain _Rain_accessor rain snowfall/) {
+	ok !State->can($method), "State can't $method";
+}
 
 {
 	eval { my @grps = State->__grouper->groups_for("Huh"); };
 	ok $@, "Huh not in groups";
 
-	my @grps = sort State->__grouper->groups_for(State->_find_columns(qw/rain capital/));
+	my @grps =
+		sort State->__grouper->groups_for(State->_find_columns(qw/rain capital/));
 	is @grps, 2, "Rain and Capital = 2 groups";
 	is $grps[0], 'Other',   " - Other";
 	is $grps[1], 'Weather', " - Weather";
@@ -104,7 +92,8 @@ ok(State->can('_set_Snowfall_accessor'), ' with alias');
 {
 	local $SIG{__WARN__} = sub { };
 	eval { Class::DBI::Sweet->retrieve(1) };
-	like $@, qr/Can't retrieve unless primary columns are defined/, "Need primary key for retrieve";
+	like $@, qr/Can't retrieve unless primary columns are defined/,
+		"Need primary key for retrieve";
 }
 
 #-----------------------------------------------------------------------
@@ -125,6 +114,6 @@ package A::C;
 __PACKAGE__->columns(All => qw(id c1 c2 c3));
 
 package main;
-is join (' ', sort A->columns),    'id',          "A columns";
-is join (' ', sort A::B->columns), 'b1 id',       "A::B columns";
-is join (' ', sort A::C->columns), 'c1 c2 c3 id', "A::C columns";
+is join(' ', sort A->columns),    'id',          "A columns";
+is join(' ', sort A::B->columns), 'b1 id',       "A::B columns";
+is join(' ', sort A::C->columns), 'c1 c2 c3 id', "A::C columns";

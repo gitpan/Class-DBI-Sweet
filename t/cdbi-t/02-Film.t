@@ -4,7 +4,7 @@ $| = 1;
 
 BEGIN {
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 90);
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 91);
 }
 
 INIT {
@@ -12,7 +12,6 @@ INIT {
 	use Film;
 }
 
-ok(Film->CONSTRUCT, "Construct Film table");
 ok(Film->can('db_Main'), 'set_db()');
 is(Film->__driver, "SQLite", "Driver set correctly");
 
@@ -32,9 +31,10 @@ is(Film->__driver, "SQLite", "Driver set correctly");
 	like $@, qr/class method/, "Can't get title with no object";
 }
 
-eval { my $duh = Film->create; };
-like $@, qr/create needs a hashref/, "create needs a hashref";
+eval { my $duh = Film->insert; };
+like $@, qr/insert needs a hashref/, "insert needs a hashref";
 
+ok +Film->create_test_film, "Create a test film";
 my $btaste = Film->retrieve('Bad Taste');
 isa_ok $btaste, 'Film';
 is($btaste->Title,             'Bad Taste',     'Title() get');
@@ -83,7 +83,7 @@ ok($gone->NumExplodingSheep == 5, 'update()');
 ok($gone->Rating eq 'NC-17', 'update() again');
 
 # Grab the 'Bladerunner' entry.
-Film->create({
+Film->insert({
 		Title    => 'Bladerunner',
 		Director => 'Bob Ridley Scott',
 		Rating   => 'R'
@@ -148,9 +148,9 @@ is($blrunner_dc->NumExplodingSheep, undef, 'Sheep correct');
 }
 
 eval {
-	my $ishtar = Film->create({ Title => 'Ishtar', Director => 'Elaine May' });
+	my $ishtar = Film->insert({ Title => 'Ishtar', Director => 'Elaine May' });
 	my $mandn =
-		Film->create({ Title => 'Mikey and Nicky', Director => 'Elaine May' });
+		Film->insert({ Title => 'Mikey and Nicky', Director => 'Elaine May' });
 	my $new_leaf =
 		Film->create({ Title => 'A New Leaf', Director => 'Elaine May' });
 	is(Film->search(Director => 'Elaine May')->count,
@@ -232,6 +232,12 @@ is($btaste->Director, $orig_director, 'discard_changes()');
 	Film->autoupdate(0);
 }
 
+{ # update unchanged object
+	my $film = Film->retrieve($btaste->id);
+	my $retval = $film->update;
+	is $retval, -1, "Unchanged object";
+}
+
 {
 	$btaste->autoupdate(1);
 	$btaste->NumExplodingSheep(32);
@@ -242,7 +248,7 @@ is($btaste->Director, $orig_director, 'discard_changes()');
 
 # Primary key of 0
 {
-	my $zero = Film->create({ Title => 0, Rating => "U" });
+	my $zero = Film->insert({ Title => 0, Rating => "U" });
 	ok defined $zero, "Create 0";
 	ok my $ret = Film->retrieve(0), "Retrieve 0";
 	is $ret->Title,  0,   "Title OK";
@@ -300,7 +306,7 @@ if (0) {
 
 {
 	{
-		ok my $byebye = DeletingFilm->create({
+		ok my $byebye = DeletingFilm->insert({
 				Title  => 'Goodbye Norma Jean',
 				Rating => 'PG',
 			}

@@ -21,7 +21,6 @@ t/cdbi-t-ocache/01-columns.t
 t/cdbi-t-ocache/03-subclassing.t
 t/cdbi-t-ocache/05-Query.t
 t/cdbi-t-ocache/06-hasa.t
-t/cdbi-t-ocache/07-Move.t
 t/cdbi-t-ocache/08-inheritcols.t
 t/cdbi-t-ocache/09-has_many.t
 t/cdbi-t-ocache/10-mysql.t
@@ -35,6 +34,10 @@ t/cdbi-t-ocache/18-has_a.t
 t/cdbi-t-ocache/19-set_sql.t
 t/cdbi-t-ocache/21-iterator.t
 t/cdbi-t-ocache/22-deflate_order.t
+t/cdbi-t-ocache/23-cascade.t
+t/cdbi-t-ocache/24-meta_info.t
+t/cdbi-t-ocache/25-closures_in_meta.t
+t/cdbi-t-ocache/97-pod.t
 t/cdbi-t-ocache/98-failure.t
 t/cdbi-t-ocache/99-misc.t
 t/cdbi-t-ocache/testlib/Actor.pm
@@ -58,7 +61,6 @@ t/cdbi-t-rescache/01-columns.t
 t/cdbi-t-rescache/03-subclassing.t
 t/cdbi-t-rescache/05-Query.t
 t/cdbi-t-rescache/06-hasa.t
-t/cdbi-t-rescache/07-Move.t
 t/cdbi-t-rescache/08-inheritcols.t
 t/cdbi-t-rescache/09-has_many.t
 t/cdbi-t-rescache/10-mysql.t
@@ -72,6 +74,10 @@ t/cdbi-t-rescache/18-has_a.t
 t/cdbi-t-rescache/19-set_sql.t
 t/cdbi-t-rescache/21-iterator.t
 t/cdbi-t-rescache/22-deflate_order.t
+t/cdbi-t-rescache/23-cascade.t
+t/cdbi-t-rescache/24-meta_info.t
+t/cdbi-t-rescache/25-closures_in_meta.t
+t/cdbi-t-rescache/97-pod.t
 t/cdbi-t-rescache/98-failure.t
 t/cdbi-t-rescache/99-misc.t
 t/cdbi-t-rescache/testlib/Actor.pm
@@ -97,7 +103,6 @@ t/cdbi-t/03-subclassing.t
 t/cdbi-t/04-lazy.t
 t/cdbi-t/05-Query.t
 t/cdbi-t/06-hasa.t
-t/cdbi-t/07-Move.t
 t/cdbi-t/08-inheritcols.t
 t/cdbi-t/09-has_many.t
 t/cdbi-t/10-mysql.t
@@ -110,6 +115,10 @@ t/cdbi-t/18-has_a.t
 t/cdbi-t/19-set_sql.t
 t/cdbi-t/21-iterator.t
 t/cdbi-t/22-deflate_order.t
+t/cdbi-t/23-cascade.t
+t/cdbi-t/24-meta_info.t
+t/cdbi-t/25-closures_in_meta.t
+t/cdbi-t/97-pod.t
 t/cdbi-t/98-failure.t
 t/cdbi-t/99-misc.t
 t/cdbi-t/testlib/Actor.pm

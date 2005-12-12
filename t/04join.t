@@ -25,11 +25,11 @@ is($cds[0]->title, "Caterwaulin' Blues", "Correct CD returned first");
 is(($cds[0]->next_by_artist({ order_by => 'year' }))[0]->title,
     "Spoonful of bees", "next_by operating correctly");
 
-my ($sql, $from) = $cds[0]->_search({ 'artist.name' => 'Spoon' });
+my ($sql) = $cds[0]->_search({ 'artist.name' => 'Spoon' });
 
-is($from, "cd me, artist artist", "FROM statement ok");
+is($sql->{from}, "cd me, artist artist", "FROM statement ok");
 
-is($sql, "( artist.name = ? ) AND me.artist = artist.artistid",
+is($sql->{where}, "( artist.name = ? ) AND me.artist = artist.artistid",
     "WHERE clause ok");
 
 cmp_ok($cds[2]->year, '==', 2001, "Last CD returned correctly");

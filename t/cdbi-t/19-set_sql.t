@@ -3,22 +3,25 @@ use Test::More;
 
 BEGIN {
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 15);
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 17);
 }
 
-INIT {
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	use Actor;
-	Film->CONSTRUCT;
-	Actor->CONSTRUCT;
+use lib 't/cdbi-t/testlib';
+use Film;
+use Actor;
+
+{    # Check __ESSENTIAL__ expansion (RT#13038)
+	my @cols = Film->columns('Essential');
+	is_deeply \@cols, ['title'], "1 Column in essential";
+	is +Film->transform_sql('__ESSENTIAL__'), 'title',
+		'__ESSENTIAL__ expansion';
 }
 
-my $f1 = Film->create({ title => 'A', director => 'AA', rating => 'PG' });
-my $f2 = Film->create({ title => 'B', director => 'BA', rating => 'PG' });
-my $f3 = Film->create({ title => 'C', director => 'AA', rating => '15' });
-my $f4 = Film->create({ title => 'D', director => 'BA', rating => '18' });
-my $f5 = Film->create({ title => 'E', director => 'AA', rating => '18' });
+my $f1 = Film->insert({ title => 'A', director => 'AA', rating => 'PG' });
+my $f2 = Film->insert({ title => 'B', director => 'BA', rating => 'PG' });
+my $f3 = Film->insert({ title => 'C', director => 'AA', rating => '15' });
+my $f4 = Film->insert({ title => 'D', director => 'BA', rating => '18' });
+my $f5 = Film->insert({ title => 'E', director => 'AA', rating => '18' });
 
 Film->set_sql(
 	pgs => qq{
@@ -73,9 +76,9 @@ Film->set_sql(
 	}
 	);
 
-	my $a1 = Actor->create({ name => "A1", film => $f1 });
-	my $a2 = Actor->create({ name => "A2", film => $f2 });
-	my $a3 = Actor->create({ name => "B1", film => $f1 });
+	my $a1 = Actor->insert({ name => "A1", film => $f1 });
+	my $a2 = Actor->insert({ name => "A2", film => $f2 });
+	my $a3 = Actor->insert({ name => "B1", film => $f1 });
 
 	my @apg = Film->search_namerate("A_", "PG");
 	is @apg, 2, "2 Films with A* that are PG";

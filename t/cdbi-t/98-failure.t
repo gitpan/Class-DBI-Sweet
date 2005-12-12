@@ -10,11 +10,10 @@ BEGIN {
 	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 7);
 }
 
-INIT {
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	Film->CONSTRUCT;
-}
+use lib 't/cdbi-t/testlib';
+use Film;
+
+Film->create_test_film;
 
 {
 	my $btaste = Film->retrieve('Bad Taste');
@@ -23,7 +22,7 @@ INIT {
 		no warnings 'redefine';
 		local *DBIx::ContextualFetch::st::execute = sub { die "Database died" };
 		eval { $btaste->delete };
-		::like $@, qr/delete.*Database died/s, "We failed";
+		::like $@, qr/Database died/s, "We failed";
 	}
 	my $still = Film->retrieve('Bad Taste');
 	isa_ok $btaste, 'Film', "We still have Bad Taste";

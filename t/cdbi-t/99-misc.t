@@ -8,7 +8,7 @@ use File::Temp qw/tempdir/;
 
 BEGIN {
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 25);
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 22);
 }
 
 use File::Temp qw/tempfile/;
@@ -20,8 +20,6 @@ END { unlink $DB if -e $DB }
 package Holiday;
 
 use base 'Class::DBI::Sweet';
-
-sub wibble { shift->croak("Croak dies") }
 
 {
 	my $warning;
@@ -49,18 +47,6 @@ sub wibble { shift->croak("Croak dies") }
 	};
 	Holiday->add_trigger('create' => sub { 1 });
 	Holiday->add_trigger('delete' => sub { 1 });
-}
-
-{
-	local $SIG{__WARN__} = sub {
-		::like $_[0], qr/deprecated/, "croak() deprecated";
-	};
-
-	eval { Holiday->croak("Croak dies") };
-	::like $@, qr/Croak dies/, "Croak dies";
-
-	eval { Holiday->wibble };
-	::like $@, qr/Croak dies/, "Croak dies";
 }
 
 {
@@ -106,21 +92,21 @@ package main;
 	});
 
 	package main;
-	eval { Holiday::Camp->create({}) };
+	eval { Holiday::Camp->insert({}) };
 	like $@, qr/Problem with Holiday/, '$self stringifies with no PK values';
 }
 
 eval { my $foo = Holiday->retrieve({ id => 1 }) };
 like $@, qr/retrieve a reference/, "Can't retrieve a reference";
 
-eval { my $foo = Holiday->create(id => 10) };
+eval { my $foo = Holiday->insert(id => 10) };
 like $@, qr/a hashref/, "Can't create without hashref";
 
 {
 	my $foo = bless {}, 'Holiday';
 	local $SIG{__WARN__} = sub { die $_[0] };
 	eval { $foo->has_a(date => 'Date::Simple') };
-	like $@, qr/object method/, "has_a is class-level";
+	like $@, qr/object method/, "has_a is class-level: $@";
 }
 
 eval { Holiday->update; };
@@ -130,10 +116,7 @@ is(Holiday->table, 'holiday', "Default table name");
 
 Holiday->_flesh('Blanket');
 
-eval { Holiday->ordered_search() };
-like $@, qr/order_by/, "ordered_search no longer works";
-
-eval { Holiday->create({ yonkey => 84 }) };
+eval { Holiday->insert({ yonkey => 84 }) };
 like $@, qr/not a column/, "Can't create with nonsense column";
 
 eval { Film->_require_class('Class::DBI::__::Nonsense') };

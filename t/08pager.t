@@ -6,7 +6,7 @@ use Test::More;
 eval "use DBD::SQLite";
 plan skip_all => 'needs DBD::SQLite for testing' if $@;
 
-plan tests => 9;
+plan tests => 10;
 
 use lib 't/lib';
 
@@ -44,3 +44,19 @@ is( $it->next->title, "Caterwaulin' Blues", "disable_sql_paging iterator->next o
 $it->next;
 
 is( $it->next, undef, "disable_sql_paging next past end of page ok" );
+
+# based on a failing criteria submitted by waswas
+( $pager, $it ) = SweetTest::CD->page(
+    { title => [
+        -and => 
+            {
+                -like => '%bees'
+            },
+            {
+                -not_like => 'Forkful%'
+            }
+        ]
+    },
+    { rows => 5 }
+);
+is( $it->count, 1, "complex abstract count ok" );

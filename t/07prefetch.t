@@ -9,11 +9,15 @@ plan skip_all => 'needs DBD::SQLite for testing' if $@;
 eval "use Cache::MemoryCache";
 plan skip_all => 'Cache::Cache required' if $@;
 
-plan tests => 6;
+plan tests => 7;
 
 use lib 't/lib';
 
 use_ok('SweetTest');
+
+# watch the number of selects we're generating
+unlink 't/var/prefetch.trace' if -e 't/var/prefetch.trace';
+DBI->trace(1, 't/var/prefetch.trace');
 
 SweetTest->cache(Cache::MemoryCache->new(
     { namespace => 'SweetTest', default_expires_in => 60 } ) );
@@ -46,3 +50,14 @@ cmp_ok(scalar SweetTest::CD->profiling_data->{object_cache}, '==', 0,
 
 use Data::Dumper qw/Dumper/;
 print Dumper(SweetTest::CD->profiling_data);
+
+# check the number of select statements we actually ran
+DBI->trace(0);
+my $selects = 0;
+open TRACE, 't/var/prefetch.trace';
+while (<TRACE>) {
+	$selects++ if /SELECT/;
+}
+close TRACE;
+unlink 't/var/prefetch.trace';
+is($selects, 1, "ran only 1 select statement, ok");

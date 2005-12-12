@@ -3,27 +3,25 @@ use Test::More;
 
 BEGIN {
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 19);
-
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	use Actor;
-	Film->CONSTRUCT;
-	Actor->CONSTRUCT;
-	Film->has_many(actors => Actor => { order_by => 'name' });
-	Actor->has_a(Film => 'Film');
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 20);
 }
 
-my $film1 = Film->create({ title => 'Film 1', rating => 'U' });
-my $film2 = Film->create({ title => 'Film 2', rating => '15' });
-my $film3 = Film->create({ title => 'Film 3', rating => '15' });
+use lib 't/cdbi-t/testlib';
+use Film;
+use Actor;
+Film->has_many(actors => Actor => { order_by => 'name' });
+Actor->has_a(Film => 'Film');
 
-my $act1 = Actor->create({ name => 'Fred', film => $film1, salary => 1 });
-my $act2 = Actor->create({ name => 'Fred', film => $film2, salary => 2 });
-my $act3 = Actor->create({ name => 'John', film => $film1, salary => 3 });
-my $act4 = Actor->create({ name => 'John', film => $film2, salary => 1 });
-my $act5 = Actor->create({ name => 'Pete', film => $film1, salary => 1 });
-my $act6 = Actor->create({ name => 'Pete', film => $film3, salary => 1 });
+my $film1 = Film->insert({ title => 'Film 1', rating => 'U' });
+my $film2 = Film->insert({ title => 'Film 2', rating => '15' });
+my $film3 = Film->insert({ title => 'Film 3', rating => '15' });
+
+my $act1 = Actor->insert({ name => 'Fred', film => $film1, salary => 1 });
+my $act2 = Actor->insert({ name => 'Fred', film => $film2, salary => 2 });
+my $act3 = Actor->insert({ name => 'John', film => $film1, salary => 3 });
+my $act4 = Actor->insert({ name => 'John', film => $film2, salary => 1 });
+my $act5 = Actor->insert({ name => 'Pete', film => $film1, salary => 1 });
+my $act6 = Actor->insert({ name => 'Pete', film => $film3, salary => 1 });
 
 use Class::DBI::Query;
 $SIG{__WARN__} = sub {};
@@ -98,7 +96,7 @@ $SIG{__WARN__} = sub {};
 {    # Restrict a has_many as class method
 	my @underpaid = Film->actors(salary  => 1);
 	my @under2    = Actor->search(salary => 1);
-	eq_set [ map $_->id, @underpaid ], [ map $_->id, @under2 ],
+	is_deeply [ sort map $_->id, @underpaid ], [ sort map $_->id, @under2 ],
 		"Can search on foreign key";
 }
 

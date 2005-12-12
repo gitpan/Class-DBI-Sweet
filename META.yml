@@ -1,11 +1,11 @@
 ---
 name: Class-DBI-Sweet
-version: 0.05
+version: 0.07
 author: ~
 abstract: ~
 license: perl
 requires:
-  Class::DBI: 0.96
+  Class::DBI: v3.1.2
   DBD::SQLite: 1.08
   DBI: 0
   Data::Page: 0
@@ -16,10 +16,10 @@ recommends:
 provides:
   Class::DBI::Sweet:
     file: lib/Class/DBI/Sweet.pm
-    version: 0.05
+    version: 0.07
   Class::DBI::Sweet::SQL::Abstract:
     file: lib/Class/DBI/Sweet.pm
-    version: 0.05
+    version: 0.07
   Class::DBI::Sweet::Topping:
     file: lib/Class/DBI/Sweet/Topping.pm
-generated_by: Module::Build version 0.25
+generated_by: Module::Build version 0.2611

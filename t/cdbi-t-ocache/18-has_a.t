@@ -9,17 +9,15 @@ BEGIN {
 	eval "use Cache::MemoryCache";
 	plan skip_all => "needs Cache::Cache for testing" if $@;
 	eval "use DBD::SQLite";
-	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 40);
+	plan $@ ? (skip_all => 'needs DBD::SQLite for testing') : (tests => 41);
 }
 
-INIT {
-	use lib 't/cdbi-t/testlib';
-	use Film;
-	use Director;
-	Film->CONSTRUCT;
-	Director->CONSTRUCT;
-	@YA::Film::ISA = 'Film';
-}
+use lib 't/cdbi-t/testlib';
+use Film;
+use Director;
+@YA::Film::ISA = 'Film';
+
+Film->create_test_film;
 
 ok my $btaste = Film->retrieve('Bad Taste'), "We have Bad Taste";
 ok my $pj = $btaste->Director, "Bad taste has a director";
@@ -27,13 +25,14 @@ ok !ref($pj), ' ... which is not an object';
 
 ok(Film->has_a('director' => 'Director'), "Link Director table");
 ok(
-	Director->create({
+	Director->insert(
+		{
 			Name     => 'Peter Jackson',
 			Birthday => -300000000,
 			IsInsane => 1
 		}
 	),
-	'create Director'
+	'insert Director'
 );
 
 {
@@ -50,11 +49,13 @@ ok(
 }
 
 # Oh no!  Its Peter Jacksons even twin, Skippy!  Born one minute after him.
-my $sj = Director->create({
+my $sj = Director->insert(
+	{
 		Name     => 'Skippy Jackson',
 		Birthday => (-300000000 + 60),
 		IsInsane => 1,
-	});
+	}
+);
 
 {
 	eval { $btaste->Director($btaste) };
@@ -109,24 +110,28 @@ is(
 
 	my $fail;
 	eval {
-		$fail = YA::Film->create({
+		$fail = YA::Film->insert(
+			{
 				Title             => 'Tastes Bad',
 				Director          => $sj,
 				codirector        => $btaste,
 				Rating            => 'R',
 				NumExplodingSheep => 23
-			});
+			}
+		);
 	};
 	ok $@,    "Can't have film as codirector: $@";
 	is $fail, undef, "We didn't get anything";
 
-	my $tastes_bad = YA::Film->create({
+	my $tastes_bad = YA::Film->insert(
+		{
 			Title             => 'Tastes Bad',
 			Director          => $sj,
 			codirector        => $pj,
 			Rating            => 'R',
 			NumExplodingSheep => 23
-		});
+		}
+	);
 	is($tastes_bad->Director->Name, 'Skippy Jackson', 'Director');
 	is(
 		$tastes_bad->_director_accessor->Name,
@@ -205,7 +210,8 @@ is(
 		},
 		deflate => sub {
 			shift->mpaa;
-		});
+		}
+	);
 
 	my $tbad = YA::Film->retrieve('Tastes Bad');
 
@@ -234,4 +240,10 @@ is(
 	$tbad = Film->retrieve('Tastes Bad');
 	ok !ref($tbad->Rating), 'Unmagical rating';
 	is $tbad->Rating, 'NS17', 'but prior change stuck';
+}
+
+{                 # Broken has_a declaration
+	eval { Film->has_a(driector => "Director") };
+	like $@, qr/driector/,
+		"Sensible error from has_a with incorrect column: $@";
 }

@@ -32,7 +32,7 @@ Binary->db_Main->{ AutoCommit } = 0;
 SKIP: {
 	for my $id (1 .. 10) {
 		my $bin = "foo\0$id";
-		my $obj = eval { Binary->create(
+		my $obj = eval { Binary->insert(
 			{
 				# id  => $id,
 				bin => $bin,
