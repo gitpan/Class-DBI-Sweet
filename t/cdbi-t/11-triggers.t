@@ -22,9 +22,17 @@ sub default_rating { $_[0]->Rating(15); }
 
 Film->add_trigger(
 	before_create => \&default_rating,
+);
+Film->add_trigger(
 	after_create  => \&create_trigger2,
+);
+Film->add_trigger(
 	after_delete  => \&delete_trigger,
+);
+Film->add_trigger(
 	before_update => \&pre_up_trigger,
+);
+Film->add_trigger(
 	after_update  => \&pst_up_trigger,
 );
 

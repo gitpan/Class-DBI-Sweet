@@ -1,5 +1,16 @@
 Revision history for Perl extension Class::DBI::Sweet
 
+0.09 Sun Dec 23 23:51:36 PST 2007
+    - fix spelling error which resulted in broken POD link, Jonas B. Nielsen
+    - check for Cache::MemoryCache and skip tests if not present, Rhesa Rozendaal
+    - fix 'bizzare copy of HASH in leave' issue, David Morgan, Randal Schwartz
+
+    - mutiple trigger registration in one add_trigger() call is deprecated,
+      update test 11 to reflect that, Bill Moseley <moseley@hank.org>
+
+    - indent subroutines and perltidy for easy reading
+    - new maintainer Fred Moyer <fred@redhotpenguin.com>
+
 0.08  Tue Dec 14 12:13:00 2005
 	- I mean, v3.0.12 ;-)
 	- Also, /ge

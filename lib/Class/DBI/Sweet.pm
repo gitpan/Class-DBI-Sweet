@@ -2,38 +2,38 @@ package Class::DBI::Sweet;
 
 use strict;
 use base 'Class::DBI';
-use Class::DBI::Iterator; # For the resultset cache
+use Class::DBI::Iterator;    # For the resultset cache
 
 use Data::Page;
 use DBI;
 use List::Util;
 use Carp qw/croak/;
 
-BEGIN { # Use Time::HiRes' time() if possible
-eval "use Time::HiRes";
-unless ($@) {
-import Time::HiRes qw/time/;
-}
+BEGIN {                      # Use Time::HiRes' time() if possible
+    eval "use Time::HiRes";
+    unless ($@) {
+        import Time::HiRes qw/time/;
+    }
 }
 
 if ( $^O eq 'MSWin32' ) {
-eval "require Win32API::GUID;";
+    eval "require Win32API::GUID;";
 }
 else {
-eval "require Data::UUID;";
+    eval "require Data::UUID;";
 }
 
-our $UUID_Is_Available = ($@ ? 0 : 1);
+our $UUID_Is_Available = ( $@ ? 0 : 1 );
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 #----------------------------------------------------------------------
 # RETRIEVING
 #----------------------------------------------------------------------
 
 __PACKAGE__->data_type(
-__ROWS   => DBI::SQL_INTEGER,
-__OFFSET => DBI::SQL_INTEGER
+    __ROWS   => DBI::SQL_INTEGER,
+    __OFFSET => DBI::SQL_INTEGER
 );
 
 __PACKAGE__->set_sql( Join_Retrieve_Count => <<'SQL' );
@@ -49,430 +49,432 @@ WHERE  %s
 SQL
 
 __PACKAGE__->mk_classdata( default_search_attributes => {} );
-__PACKAGE__->mk_classdata( profiling_data => { } );
-__PACKAGE__->mk_classdata( _live_resultset_cache => { } );
+__PACKAGE__->mk_classdata( profiling_data            => {} );
+__PACKAGE__->mk_classdata( _live_resultset_cache     => {} );
 
 sub retrieve_next {
-my $self = shift;
-my $class = ref $self
-|| croak("retrieve_next cannot be called as a class method");
+    my $self  = shift;
+    my $class = ref $self
+      || croak("retrieve_next cannot be called as a class method");
 
-my ( $criteria, $attributes ) = $class->_search_args(@_);
-$attributes = { %{$attributes} }; # Local copy to fiddle with
+    my ( $criteria, $attributes ) = $class->_search_args(@_);
+    $attributes = { %{$attributes} };    # Local copy to fiddle with
 
-my $o_by = $attributes->{order_by} || ($self->columns('Primary'))[0];
-my $is_desc=$o_by =~ s/ +DESC//; # If it's previous we'll add it back
+    my $o_by = $attributes->{order_by} || ( $self->columns('Primary') )[0];
+    my $is_desc = $o_by =~ s/ +DESC//;    # If it's previous we'll add it back
 
-my $o_val = ($o_by =~ m/(.*)\.(.*)/
-	    ? $self->$1->$2
-	    : $self->$o_by);
+    my $o_val = (
+        $o_by =~ m/(.*)\.(.*)/
+        ? $self->$1->$2
+        : $self->$o_by
+    );
 
-$criteria->{$o_by} = { ($is_desc ? '<' : '>') => $o_val };
+    $criteria->{$o_by} = { ( $is_desc ? '<' : '>' ) => $o_val };
 
-$attributes->{rows} ||= 1;
+    $attributes->{rows} ||= 1;
 
-return wantarray()
-? @{[$class->_do_search( $criteria, $attributes )]}
-: $class->_do_search( $criteria, $attributes );
+    return wantarray()
+      ? @{ [ $class->_do_search( $criteria, $attributes ) ] }
+      : $class->_do_search( $criteria, $attributes );
 }
 
 sub retrieve_previous {
-my $self = shift;
-my $class = ref $self
-|| croak("retrieve_previous cannot be called as a class method");
+    my $self  = shift;
+    my $class = ref $self
+      || croak("retrieve_previous cannot be called as a class method");
 
-my ( $criteria, $attributes ) = $class->_search_args(@_);
-$attributes = { %{$attributes} }; # Local copy to fiddle with
+    my ( $criteria, $attributes ) = $class->_search_args(@_);
+    $attributes = { %{$attributes} };    # Local copy to fiddle with
 
-my $o_by = $attributes->{order_by} || ($self->columns('Primary'))[0];
-my $is_desc=$o_by =~ s/ +DESC//; # If it's previous we'll add it back
+    my $o_by = $attributes->{order_by} || ( $self->columns('Primary') )[0];
+    my $is_desc = $o_by =~ s/ +DESC//;    # If it's previous we'll add it back
 
-my $o_val = ($o_by =~ m/(.*)\.(.*)/
-	    ? $self->$1->$2
-	    : $self->$o_by);
+    my $o_val = (
+        $o_by =~ m/(.*)\.(.*)/
+        ? $self->$1->$2
+        : $self->$o_by
+    );
 
-$criteria->{$o_by} = { ( $is_desc ? '>' : '<' ) => $o_val };
+    $criteria->{$o_by} = { ( $is_desc ? '>' : '<' ) => $o_val };
 
-$attributes->{order_by} = ${o_by} . ($is_desc ? "" : " DESC");
-$attributes->{rows} ||= 1;
+    $attributes->{order_by} = ${o_by} . ( $is_desc ? "" : " DESC" );
+    $attributes->{rows} ||= 1;
 
-return wantarray()
-? @{[$class->_do_search( $criteria, $attributes )]}
-: $class->_do_search( $criteria, $attributes );
+    return wantarray()
+      ? @{ [ $class->_do_search( $criteria, $attributes ) ] }
+      : $class->_do_search( $criteria, $attributes );
 }
 
 sub count {
-my $proto = shift;
-my $class = ref($proto) || $proto;
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
 
-unless ( @_ ) {
-return $class->count_all;
-}
+    unless (@_) {
+        return $class->count_all;
+    }
 
-my ( $criteria, $attributes ) = $class->_search_args(@_);
+    my ( $criteria, $attributes ) = $class->_search_args(@_);
 
-# make sure we take copy of $attribues since it can be reused
-my $count = { %{$attributes} };
+    # make sure we take copy of $attribues since it can be reused
+    my $count = { %{$attributes} };
 
-# no need for LIMIT/OFFSET and ORDER BY in COUNT(*)
-delete @{$count}{qw( rows offset order_by )};
+    # no need for LIMIT/OFFSET and ORDER BY in COUNT(*)
+    delete @{$count}{qw( rows offset order_by )};
 
-my ( $sql_parts, $classes, $columns, $values )
-= $proto->_search( $criteria, $count );
+    my ( $sql_parts, $classes, $columns, $values ) =
+      $proto->_search( $criteria, $count );
 
-my $sql_method = 'sql_' . ($attributes->{sql_method} || 'Join_Retrieve');
-$sql_method .= '_Count';
+    my $sql_method = 'sql_' . ( $attributes->{sql_method} || 'Join_Retrieve' );
+    $sql_method .= '_Count';
 
-my $sth = $class->$sql_method( @{%$sql_parts}{qw/ from where /} );
+    my $sth = $class->$sql_method( @{$sql_parts}{qw/ from where /} );
 
-$class->_bind_param( $sth, $columns );
+    $class->_bind_param( $sth, $columns );
 
-return $sth->select_val(@$values);
+    return $sth->select_val(@$values);
 }
 
 *pager = \&page;
 
 sub page {
-my $proto = shift;
-my $class = ref($proto) || $proto;
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
 
-my ( $criteria, $attributes ) = $proto->_search_args(@_);
+    my ( $criteria, $attributes ) = $proto->_search_args(@_);
 
-$attributes->{rows} ||= 10;
-$attributes->{page} ||= 1;
-$attributes->{_pager} = '';  # Flag that we need a pager.  How ugly!
+    $attributes->{rows} ||= 10;
+    $attributes->{page} ||= 1;
+    $attributes->{_pager} = '';    # Flag that we need a pager.  How ugly!
 
-# No point doing a count(*) if fetching all anyway
-unless ( $attributes->{disable_sql_paging} ) {
+    # No point doing a count(*) if fetching all anyway
+    unless ( $attributes->{disable_sql_paging} ) {
 
-my $page = Data::Page->new(
-    $class->count( $criteria, $attributes ),
-    $attributes->{rows},
-    $attributes->{page},
-);
+        my $page = Data::Page->new( $class->count( $criteria, $attributes ),
+            $attributes->{rows}, $attributes->{page}, );
 
-$attributes->{offset} = $page->skipped;
-$attributes->{_pager} = $page;
+        $attributes->{offset} = $page->skipped;
+        $attributes->{_pager} = $page;
 
-}
+    }
 
-my $iterator = $class->search( $criteria, $attributes );
+    my $iterator = $class->search( $criteria, $attributes );
 
-return ( $attributes->{_pager}, $iterator );
+    return ( $attributes->{_pager}, $iterator );
 }
 
 sub retrieve_all {
-my $proto = shift;
-my $class = ref($proto) || $proto;
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
 
-unless ( @_ || keys %{ $class->default_search_attributes }) {
-return $class->SUPER::retrieve_all;
-}
+    unless ( @_ || keys %{ $class->default_search_attributes } ) {
+        return $class->SUPER::retrieve_all;
+    }
 
-return $class->search( {}, ( @_ > 1 ) ? { @_ } : (shift || ()) );
+    return $class->search( {}, ( @_ > 1 ) ? {@_} : ( shift || () ) );
 }
 
 sub search {
-my $proto = shift;
-my $class = ref($proto) || $proto;
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
 
-my ( $criteria, $attributes ) = $class->_search_args(@_);
+    my ( $criteria, $attributes ) = $class->_search_args(@_);
 
-$class->_do_search( $criteria, $attributes );
+    $class->_do_search( $criteria, $attributes );
 }
 
 sub search_like {
-my $proto = shift;
-my $class = ref($proto) || $proto;
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
 
-my ( $criteria, $attributes ) = $class->_search_args(@_);
+    my ( $criteria, $attributes ) = $class->_search_args(@_);
 
-$attributes->{cmp} = 'like';
+    $attributes->{cmp} = 'like';
 
-$class->_do_search( $criteria, $attributes );
+    $class->_do_search( $criteria, $attributes );
 }
 
 sub _do_search {
-my ( $class, $criteria, $attributes ) = @_;
+    my ( $class, $criteria, $attributes ) = @_;
 
-foreach my $pre (@{$attributes->{prefetch} || []}) {
-unless ($class->meta_info(has_a => $pre)
-	or $class->meta_info(might_have => $pre)) {
-    croak "$pre is not a has_a or might_have rel on $class";
-}
-}
-
-my ( $sql_parts, $classes, $columns, $values )
-= $class->_search( $criteria, $attributes );
-
-my $cache_key;
-
-if ( $class->cache && $attributes->{use_resultset_cache}) {
-
-my $sql = join '', @{%$sql_parts}{qw/ where from order_by limit /};
-
-$cache_key = $class->_resultset_cache_key($sql, $values,
-					  $attributes->{prefetch});
-my $cache_entry;
-
-my ( $latest_stale ) = sort { $b <=> $a }
-			 grep defined,
-			 map { $class->cache->get($_) }
-			 grep defined,
-			 map { $_->_staleness_cache_key }
-			 values %{$classes};
-
-if ($cache_key) {
-
-    if ( $cache_entry = $class->_live_resultset_cache->{$cache_key} ) {
-
-	if ( $cache_entry->{created} <= ( $latest_stale || 0 ) ) {
-
-	    delete $class->_live_resultset_cache->{$cache_key};
-	    undef $cache_entry;
-	} else {
-
-	    # So reset doesn't screw the original copy
-	    # (which might still be in scope and in use)
-
-	    $cache_entry =
-
-	      {
-		%$cache_entry,
-		iterator =>
-		  bless({ %{ $cache_entry->{iterator} } },
-			  ref $cache_entry->{iterator})
-	      };
-
-	    $cache_entry->{iterator}->reset;
-	}
+    foreach my $pre ( @{ $attributes->{prefetch} || [] } ) {
+        unless ( $class->meta_info( has_a => $pre )
+            or $class->meta_info( might_have => $pre ) )
+        {
+            croak "$pre is not a has_a or might_have rel on $class";
+        }
     }
 
-    if ( !(defined $cache_entry) and
-	   $cache_entry = $class->cache->get($cache_key) ) {
+    my ( $sql_parts, $classes, $columns, $values ) =
+      $class->_search( $criteria, $attributes );
 
-	if ( $cache_entry->{created} <= ( $latest_stale || 0 ) ) {
+    my $cache_key;
 
-	    $class->cache->remove($cache_key);
-	   undef $cache_entry;
-	} else {
+    if ( $class->cache && $attributes->{use_resultset_cache} ) {
 
-	    $class->_live_resultset_cache->{$cache_key} = $cache_entry;
-	}
+        my $sql = join '', @{$sql_parts}{qw/ where from order_by limit /};
 
+        $cache_key =
+          $class->_resultset_cache_key( $sql, $values,
+            $attributes->{prefetch} );
+        my $cache_entry;
+
+        my ($latest_stale) = sort { $b <=> $a }
+          grep defined, map { $class->cache->get($_) }
+          grep defined, map { $_->_staleness_cache_key } values %{$classes};
+
+        if ($cache_key) {
+
+            if ( $cache_entry = $class->_live_resultset_cache->{$cache_key} ) {
+
+                if ( $cache_entry->{created} <= ( $latest_stale || 0 ) ) {
+
+                    delete $class->_live_resultset_cache->{$cache_key};
+                    undef $cache_entry;
+                }
+                else {
+
+                    # So reset doesn't screw the original copy
+                    # (which might still be in scope and in use)
+
+                    $cache_entry =
+
+                      {
+                        %$cache_entry,
+                        iterator => bless(
+                            { %{ $cache_entry->{iterator} } },
+                            ref $cache_entry->{iterator}
+                        )
+                      };
+
+                    $cache_entry->{iterator}->reset;
+                }
+            }
+
+            if ( !( defined $cache_entry )
+                and $cache_entry = $class->cache->get($cache_key) )
+            {
+
+                if ( $cache_entry->{created} <= ( $latest_stale || 0 ) ) {
+
+                    $class->cache->remove($cache_key);
+                    undef $cache_entry;
+                }
+                else {
+
+                    $class->_live_resultset_cache->{$cache_key} = $cache_entry;
+                }
+
+            }
+        }
+
+        if ($cache_entry) {
+
+            push (
+                @{ $class->profiling_data->{resultset_cache} },
+                [ 'HIT', $cache_key ]
+              )
+              if $attributes->{profile_cache};
+            my $iterator =
+              $class->_slice_iter( $attributes, $cache_entry->{iterator} );
+            return map $class->construct($_), $iterator->data if wantarray;
+            return $iterator;
+        }
+        push (
+            @{ $class->profiling_data->{resultset_cache} },
+            [ 'MISS', $cache_key ]
+          )
+          if $attributes->{profile_cache};
     }
-}
 
-if ($cache_entry) {
+    my $pre_fields = '';    # Used in SELECT
+    my $pre_names  = '';    # for use in GROUP BY
 
-    push(@{$class->profiling_data->{resultset_cache}},
-	   [ 'HIT', $cache_key ]) if $attributes->{profile_cache};
-    my $iterator = $class->_slice_iter(
-		       $attributes, $cache_entry->{iterator} );
+    if ( $attributes->{prefetch} ) {
+        $pre_fields .= ", '"
+          . join ( ' ', @{ $attributes->{prefetch} } )
+          . "' AS sweet__joins";
+
+        my $jnum = 0;
+        foreach my $pre ( @{ $attributes->{prefetch} } ) {
+            $jnum++;
+            my $f_class = $classes->{$pre};
+            foreach my $col ( $f_class->columns('Essential') ) {
+                $pre_names .= ", ${pre}.${col}";
+                $pre_fields .= ", ${pre}.${col} AS sweet__${jnum}_${col}";
+            }
+        }
+    }
+
+    $sql_parts->{prefetch_cols}  = $pre_fields;
+    $sql_parts->{prefetch_names} = $pre_names;
+
+    my $sql_method = 'sql_' . ( $attributes->{sql_method} || 'Join_Retrieve' );
+
+    my $statement_order = $attributes->{statement_order}
+      || [qw/ prefetch_cols from sql /];
+
+    my @sql_parts;
+    for my $part (@$statement_order) {
+
+        # For backward compatibility
+        if ( $part eq 'sql' ) {
+            push @sql_parts, join ' ',
+              @{$sql_parts}{qw/ where order_by limit/};
+            next;
+        }
+        if ( exists $sql_parts->{$part} ) {
+            push @sql_parts, $sql_parts->{$part};
+            next;
+        }
+        die "'statement_order' setting of [$part] is invalid";
+    }
+
+    my $sth = $class->$sql_method(@sql_parts);
+
+    $class->_bind_param( $sth, $columns );
+
+    my $iterator = $class->sth_to_objects( $sth, $values );
+
+    if ( $class->cache && $attributes->{use_resultset_cache} ) {
+
+        my $cache_entry = {
+            created  => time(),
+            iterator => bless( { %{$iterator} }, ref $iterator )
+        };
+
+        $class->cache->set( $cache_key, $cache_entry );
+        $class->_live_resultset_cache->{$cache_key} = $cache_entry;
+    }
+
+    $iterator = $class->_slice_iter( $attributes, $iterator );
+
     return map $class->construct($_), $iterator->data if wantarray;
     return $iterator;
 }
-push(@{$class->profiling_data->{resultset_cache}},
-       [ 'MISS', $cache_key ]) if $attributes->{profile_cache};
-}
-
-my $pre_fields = '';  # Used in SELECT
-my $pre_names  = '';  # for use in GROUP BY
-
-if ($attributes->{prefetch}) {
-$pre_fields .= ", '".join(' ', @{$attributes->{prefetch}})
-		   ."' AS sweet__joins";
-
-my $jnum = 0;
-foreach my $pre (@{$attributes->{prefetch}}) {
-    $jnum++;
-    my $f_class = $classes->{$pre};
-    foreach my $col ($f_class->columns('Essential')) {
-	$pre_names  .= ", ${pre}.${col}";
-	$pre_fields .= ", ${pre}.${col} AS sweet__${jnum}_${col}";
-    }
-}
-}
-
-$sql_parts->{prefetch_cols} = $pre_fields;
-$sql_parts->{prefetch_names} = $pre_names;
-
-my $sql_method = 'sql_' . ($attributes->{sql_method} || 'Join_Retrieve');
-
-my $statement_order = $attributes->{statement_order}
-|| [qw/ prefetch_cols from sql / ];
-
-my @sql_parts;
-for my $part ( @$statement_order ) {
-# For backward compatibility
-if ( $part eq 'sql' ) {
-    push @sql_parts, join ' ', @{%$sql_parts}{qw/ where order_by limit/};
-    next;
-}
-if ( exists $sql_parts->{ $part } ) {
-    push @sql_parts, $sql_parts->{ $part };
-    next;
-}
-die "'statement_order' setting of [$part] is invalid";
-}
-
-my $sth = $class->$sql_method( @sql_parts );
-
-$class->_bind_param( $sth, $columns );
-
-my $iterator = $class->sth_to_objects( $sth, $values );
-
-if ($class->cache && $attributes->{use_resultset_cache}) {
-
-my $cache_entry = {
-  created => time(),
-  iterator => bless( { %{ $iterator } }, ref $iterator)
-};
-
-$class->cache->set( $cache_key, $cache_entry );
-$class->_live_resultset_cache->{$cache_key} = $cache_entry;
-}
-
-$iterator = $class->_slice_iter($attributes, $iterator);
-
-return map $class->construct($_), $iterator->data if wantarray;
-return $iterator;
-}
 
 sub _slice_iter {
-my ( $class, $attributes, $iterator) = @_;
+    my ( $class, $attributes, $iterator ) = @_;
 
-# Create pager if doesn't already exist
-if ( exists $attributes->{_pager} && ! $attributes->{_pager} ) {
+    # Create pager if doesn't already exist
+    if ( exists $attributes->{_pager} && !$attributes->{_pager} ) {
 
-$attributes->{_pager} = Data::Page->new(
-    $iterator->count,
-    $attributes->{rows},
-    $attributes->{page},
-);
+        $attributes->{_pager} =
+          Data::Page->new( $iterator->count, $attributes->{rows},
+            $attributes->{page}, );
 
-$attributes->{offset} = $attributes->{_pager}->skipped;
-}
+        $attributes->{offset} = $attributes->{_pager}->skipped;
+    }
 
-# If RDBM is not ROWS/OFFSET supported, slice iterator
-if ( $attributes->{rows} && $iterator->count > $attributes->{rows} ) {
+    # If RDBM is not ROWS/OFFSET supported, slice iterator
+    if ( $attributes->{rows} && $iterator->count > $attributes->{rows} ) {
 
+        my $rows   = $attributes->{rows};
+        my $offset = $attributes->{offset} || 0;
 
-my $rows   = $attributes->{rows};
-my $offset = $attributes->{offset} || 0;
+        $iterator = $iterator->slice( $offset, $offset + $rows - 1 );
+    }
 
-$iterator = $iterator->slice( $offset, $offset + $rows - 1 );
-}
-
-return $iterator;
+    return $iterator;
 }
 
 sub _search {
-my $proto      = shift;
-my $criteria   = shift;
-my $attributes = shift;
-my $class      = ref($proto) || $proto;
+    my $proto      = shift;
+    my $criteria   = shift;
+    my $attributes = shift;
+    my $class      = ref($proto) || $proto;
 
-# Valid SQL::Abstract params
-my %params = map { $_ => $attributes->{$_} } qw(case cmp convert logic);
+    # Valid SQL::Abstract params
+    my %params = map { $_ => $attributes->{$_} } qw(case cmp convert logic);
 
-$params{cdbi_class}    = $class;
-$params{cdbi_me_alias} = 'me';
+    $params{cdbi_class}    = $class;
+    $params{cdbi_me_alias} = 'me';
 
-# Overide bindtype, we need all columns and values for deflating
-my $abstract
-= Class::DBI::Sweet::SQL::Abstract->new( %params,
-					   bindtype => 'columns' );
+    # Overide bindtype, we need all columns and values for deflating
+    my $abstract =
+      Class::DBI::Sweet::SQL::Abstract->new( %params, bindtype => 'columns' );
 
+    my ( $sql, $from, $classes, @bind ) =
+      $abstract->where( $criteria, '', $attributes->{prefetch} );
 
+    my ( @columns, @values, %cache );
 
-my ( $sql, $from, $classes, @bind )
-= $abstract->where( $criteria, '', $attributes->{prefetch} );
+    foreach my $bind (@bind) {
+        push ( @columns, $bind->[0] );
+        push ( @values,  @{$bind}[ 1 .. $#$bind ] );
+    }
 
-my ( @columns, @values, %cache );
+    unless ( $sql =~ /^\s*WHERE/i )
+    {    # huh? This is either WHERE.. or empty string.
+        $sql = "WHERE 1=1 $sql";
+    }
 
-foreach my $bind (@bind) {
-push( @columns, $bind->[0] );
-push( @values,  @{$bind}[1..$#$bind] );
-}
+    $sql =~ s/^\s*(WHERE)\s*//i;
 
+    my %sql_parts = (
+        where    => $sql,
+        from     => $from,
+        limit    => '',
+        order_by => '',
+    );
 
-unless ( $sql =~ /^\s*WHERE/i ) {  # huh? This is either WHERE.. or empty string.
-$sql = "WHERE 1=1 $sql"
-}
+    $sql_parts{order_by} = $abstract->_order_by( $attributes->{order_by} )
+      if $attributes->{order_by};
 
-$sql =~ s/^\s*(WHERE)\s*//i;
+    if ( $attributes->{rows} && !$attributes->{disable_sql_paging} ) {
 
+        my $rows   = $attributes->{rows};
+        my $offset = $attributes->{offset} || 0;
+        my $driver = lc $class->db_Main->{Driver}->{Name};
 
-my %sql_parts = (
-where       => $sql,
-from        => $from,
-limit       => '',
-order_by    => '',
-);
+        if ( $driver =~ /^(maxdb|mysql|mysqlpp)$/ ) {
+            $sql_parts{limit} = ' LIMIT ?, ?';
+            push ( @columns, '__OFFSET', '__ROWS' );
+            push ( @values, $offset, $rows );
+        }
 
-$sql_parts{order_by} = $abstract->_order_by( $attributes->{order_by} )
-if $attributes->{order_by};
+        elsif ( $driver =~ /^(pg|pgpp|sqlite|sqlite2)$/ ) {
+            $sql_parts{limit} = ' LIMIT ? OFFSET ?';
+            push ( @columns, '__ROWS', '__OFFSET' );
+            push ( @values, $rows, $offset );
+        }
 
+        elsif ( $driver =~ /^(interbase)$/ ) {
+            $sql_parts{limit} = ' ROWS ? TO ?';
+            push ( @columns, '__ROWS', '__OFFSET' );
+            push ( @values, $rows, $offset + $rows );
+        }
+    }
 
-
-if ( $attributes->{rows} && !$attributes->{disable_sql_paging}) {
-
-my $rows   = $attributes->{rows};
-my $offset = $attributes->{offset} || 0;
-my $driver = lc $class->db_Main->{Driver}->{Name};
-
-if ( $driver =~ /^(maxdb|mysql|mysqlpp)$/ ) {
-    $sql_parts{limit} = ' LIMIT ?, ?';
-    push( @columns, '__OFFSET', '__ROWS' );
-    push( @values, $offset, $rows );
-}
-
-elsif ( $driver =~ /^(pg|pgpp|sqlite|sqlite2)$/ ) {
-    $sql_parts{limit} = ' LIMIT ? OFFSET ?';
-    push( @columns, '__ROWS', '__OFFSET' );
-    push( @values, $rows, $offset );
-}
-
-elsif ( $driver =~ /^(interbase)$/ ) {
-    $sql_parts{limit} = ' ROWS ? TO ?';
-    push( @columns, '__ROWS', '__OFFSET' );
-    push( @values, $rows, $offset + $rows );
-}
-}
-
-
-return ( \%sql_parts, $classes, \@columns, \@values );
+    return ( \%sql_parts, $classes, \@columns, \@values );
 }
 
 sub _search_args {
-my $proto = shift;
+    my $proto = shift;
 
-my ( $criteria, $attributes );
+    my ( $criteria, $attributes );
 
-if ( @_ == 2
-  && ref( $_[0] ) =~ /^(ARRAY|HASH)$/
-  && ref( $_[1] ) eq 'HASH' )
-{
-$criteria   = $_[0];
-$attributes = $_[1];
-}
-elsif ( @_ == 1 && ref( $_[0] ) =~ /^(ARRAY|HASH)$/ ) {
-$criteria   = $_[0];
-$attributes = {};
-}
-else {
-$attributes = @_ % 2 ? pop(@_) : {};
-$criteria   = {@_};
-}
+    if (   @_ == 2
+        && ref( $_[0] ) =~ /^(ARRAY|HASH)$/
+        && ref( $_[1] ) eq 'HASH' )
+    {
+        $criteria   = $_[0];
+        $attributes = $_[1];
+    }
+    elsif ( @_ == 1 && ref( $_[0] ) =~ /^(ARRAY|HASH)$/ ) {
+        $criteria   = $_[0];
+        $attributes = {};
+    }
+    else {
+        $attributes = @_ % 2 ? pop (@_) : {};
+        $criteria = {@_};
+    }
 
+    # Need to pass things in $attributes, so don't create a new hash
+    for my $key ( keys %{ $proto->default_search_attributes } ) {
+        $attributes->{$key} ||= $proto->default_search_attributes->{$key};
+    }
 
-# Need to pass things in $attributes, so don't create a new hash
-for my $key ( keys %{ $proto->default_search_attributes } ) {
-$attributes->{$key} ||= $proto->default_search_attributes->{$key};
-}
-
-return ( $criteria, $attributes );
+    return ( $criteria, $attributes );
 }
 
 #----------------------------------------------------------------------
@@ -482,176 +484,180 @@ return ( $criteria, $attributes );
 __PACKAGE__->mk_classdata('cache');
 
 sub cache_key {
-my $proto = shift;
-my $class = ref($proto) || $proto;
-my $data;
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
+    my $data;
 
-my @primary_columns = $class->primary_columns;
+    my @primary_columns = $class->primary_columns;
 
-if (@_) {
-if ( @_ == 1 && ref( $_[0] ) eq 'HASH' ) {
-    $data = $_[0];
-}
-elsif ( @_ == 1 ) {
-    $data = { $primary_columns[0] => $_[0] };
-}
-else {
-    $data = {@_};
-}
-}
-else {
-@{$data}{@primary_columns} = $proto->get(@primary_columns);
-}
+    if (@_) {
+        if ( @_ == 1 && ref( $_[0] ) eq 'HASH' ) {
+            $data = $_[0];
+        }
+        elsif ( @_ == 1 ) {
+            $data = { $primary_columns[0] => $_[0] };
+        }
+        else {
+            $data = {@_};
+        }
+    }
+    else {
+        @{$data}{@primary_columns} = $proto->get(@primary_columns);
+    }
 
-unless ( @primary_columns == grep defined, @{$data}{@primary_columns} ) {
-return;
-}
+    unless ( @primary_columns == grep defined, @{$data}{@primary_columns} ) {
+        return;
+    }
 
-return join "|", $class, map $_ . '=' . $data->{$_}, sort @primary_columns;
+    return join "|", $class, map $_ . '=' . $data->{$_}, sort @primary_columns;
 }
 
 sub _resultset_cache_key {
-my ($class, $sql, $values, $prefetch) = @_;
+    my ( $class, $sql, $values, $prefetch ) = @_;
 
-$class = ref $class if ref $class;
+    $class = ref $class if ref $class;
 
-my @pre = map { "=${_}"; } @{$prefetch || []};
+    my @pre = map { "=${_}"; } @{ $prefetch || [] };
 
-my $it = $class->iterator_class;
+    my $it = $class->iterator_class;
 
-return join "|", $class, "=${sql}", "=${it}", @pre, @{$values || []};
+    return join "|", $class, "=${sql}", "=${it}", @pre, @{ $values || [] };
 }
 
 sub _staleness_cache_key {
-my ($class) = @_;
+    my ($class) = @_;
 
-$class = ref $class if ref $class;
+    $class = ref $class if ref $class;
 
-return "${class}|+staleness_key";
+    return "${class}|+staleness_key";
 }
 
 sub _init {
-my $class = shift;
+    my $class = shift;
 
-my $data = $_[0] || {};
+    my $data = $_[0] || {};
 
-unless ($class->cache || $data->{'sweet__joins'}) {
-return $class->SUPER::_init(@_);
-}
-
-my $key  = $class->cache_key($data);
-
-my $object;
-
-if ( $class->cache and $key and $object = $class->cache->get($key) ) {
-push(@{$class->profiling_data->{object_cache}},
-       [ 'HIT', $key ])
-       if ($class->default_search_attributes->{profile_cache});
-
-# ensure that objects from the cache get inflated properly
-if ( (caller(1))[3] eq "Class::DBI::_simple_bless" ) {
-    $object->call_trigger('select');
-}
-
-return $object;
-}
-
-push(@{$class->profiling_data->{object_cache}},
-   [ 'MISS', $key ])
-   if ($class->default_search_attributes->{profile_cache});
-
-$object = bless {}, $class;
-
-if (my $joins = $data->{'sweet__joins'}) {
-my $meta = $class->meta_info;
-my $jnum = 0;
-foreach my $join (split(/ /, $joins)) {
-    my ($rel, $f_class);
-    $jnum++;
-    if ($rel = $meta->{has_a}{$join}) {
-	$f_class = $rel->foreign_class;
-	my %attrs = map { ($_ => $data->{"sweet__${jnum}_${_}"}) }
-			$f_class->columns('Essential');
-	$data->{$join} = $f_class->construct(\%attrs);
-    } elsif ($rel = $meta->{might_have}{$join}) {
-	$f_class = $rel->foreign_class;
-	my %attrs = map { ($_ => $data->{"sweet__${jnum}_${_}"}) }
-			$f_class->columns('Essential');
-	$object->{"_${join}_object"} = $f_class->construct(\%attrs);
-    } else {
-	croak("Unable to find relationship ${join} on ${class}");
+    unless ( $class->cache || $data->{'sweet__joins'} ) {
+        return $class->SUPER::_init(@_);
     }
-}
-}
 
-$object->_attribute_store(%$data);
+    my $key = $class->cache_key($data);
 
-if ( $class->cache and $key ) {
-$object->call_trigger('deflate_for_create');
-$class->cache->set( $key, $object );
-}
+    my $object;
 
-return $object;
+    if ( $class->cache and $key and $object = $class->cache->get($key) ) {
+        push ( @{ $class->profiling_data->{object_cache} }, [ 'HIT', $key ] )
+          if ( $class->default_search_attributes->{profile_cache} );
+
+        # ensure that objects from the cache get inflated properly
+        if ( ( caller(1) )[3] eq "Class::DBI::_simple_bless" ) {
+            $object->call_trigger('select');
+        }
+
+        return $object;
+    }
+
+    push ( @{ $class->profiling_data->{object_cache} }, [ 'MISS', $key ] )
+      if ( $class->default_search_attributes->{profile_cache} );
+
+    $object = bless {}, $class;
+
+    if ( my $joins = $data->{'sweet__joins'} ) {
+        my $meta = $class->meta_info;
+        my $jnum = 0;
+        foreach my $join ( split ( / /, $joins ) ) {
+            my ( $rel, $f_class );
+            $jnum++;
+            if ( $rel = $meta->{has_a}{$join} ) {
+                $f_class = $rel->foreign_class;
+                my %attrs =
+                  map { ( $_ => $data->{"sweet__${jnum}_${_}"} ) }
+                  $f_class->columns('Essential');
+                $data->{$join} = $f_class->construct( \%attrs );
+            }
+            elsif ( $rel = $meta->{might_have}{$join} ) {
+                $f_class = $rel->foreign_class;
+                my %attrs =
+                  map { ( $_ => $data->{"sweet__${jnum}_${_}"} ) }
+                  $f_class->columns('Essential');
+                $object->{"_${join}_object"} = $f_class->construct( \%attrs );
+            }
+            else {
+                croak("Unable to find relationship ${join} on ${class}");
+            }
+        }
+    }
+
+    $object->_attribute_store(%$data);
+
+    if ( $class->cache and $key ) {
+        $object->call_trigger('deflate_for_create');
+        $class->cache->set( $key, $object );
+    }
+
+    return $object;
 }
 
 sub retrieve {
-my $class = shift;
+    my $class = shift;
 
-if ( $class->cache ) {
+    if ( $class->cache ) {
 
-if ( my $key = $class->cache_key(@_) ) {
+        if ( my $key = $class->cache_key(@_) ) {
 
-    if ( my $object = $class->cache->get($key) ) {
-	$object->call_trigger('select');
-	push(@{$class->profiling_data->{object_cache}},
-	       [ 'HIT', $key ])
-	       if ($class->default_search_attributes->{profile_cache});
-	return $object;
+            if ( my $object = $class->cache->get($key) ) {
+                $object->call_trigger('select');
+                push (
+                    @{ $class->profiling_data->{object_cache} },
+                    [ 'HIT', $key ]
+                  )
+                  if ( $class->default_search_attributes->{profile_cache} );
+                return $object;
+            }
+
+            push ( @{ $class->profiling_data->{object_cache} },
+                [ 'MISS', $key ] )
+              if ( $class->default_search_attributes->{profile_cache} );
+        }
     }
 
-    push(@{$class->profiling_data->{object_cache}},
-	   [ 'MISS', $key ])
-	   if ($class->default_search_attributes->{profile_cache});
-}
-}
-
-return $class->SUPER::retrieve(@_);
+    return $class->SUPER::retrieve(@_);
 }
 
 *create = \&insert;
 
 sub insert {
-my $self = shift;
+    my $self = shift;
 
-if ( $self->cache ) {
-$self->cache->set( $self->_staleness_cache_key, time() );
-}
+    if ( $self->cache ) {
+        $self->cache->set( $self->_staleness_cache_key, time() );
+    }
 
-return $self->SUPER::insert(@_);
+    return $self->SUPER::insert(@_);
 }
 
 sub update {
-my $self = shift;
+    my $self = shift;
 
-if ( $self->cache ) {
-$self->cache->remove( $self->cache_key );
-$self->cache->set( $self->_staleness_cache_key, time() );
-}
+    if ( $self->cache ) {
+        $self->cache->remove( $self->cache_key );
+        $self->cache->set( $self->_staleness_cache_key, time() );
+    }
 
-return $self->SUPER::update(@_);
+    return $self->SUPER::update(@_);
 }
 
 sub delete {
-my $self = shift;
+    my $self = shift;
 
-return $self->_search_delete(@_) if not ref $self;
+    return $self->_search_delete(@_) if not ref $self;
 
-if ( $self->cache ) {
-$self->cache->remove( $self->cache_key );
-$self->cache->set( $self->_staleness_cache_key, time() );
-}
+    if ( $self->cache ) {
+        $self->cache->remove( $self->cache_key );
+        $self->cache->set( $self->_staleness_cache_key, time() );
+    }
 
-return $self->SUPER::delete(@_);
+    return $self->SUPER::delete(@_);
 }
 
 #----------------------------------------------------------------------
@@ -659,23 +665,22 @@ return $self->SUPER::delete(@_);
 #----------------------------------------------------------------------
 
 sub _next_in_sequence {
-my $self = shift;
+    my $self = shift;
 
-if ( lc $self->sequence eq 'uuid' ) {
+    if ( lc $self->sequence eq 'uuid' ) {
 
-die "UUID features not available" unless $UUID_Is_Available;
+        die "UUID features not available" unless $UUID_Is_Available;
 
-if ( $^O eq 'MSWin32' ) {
-    return Win32API::GUID::CreateGuid();
+        if ( $^O eq 'MSWin32' ) {
+            return Win32API::GUID::CreateGuid();
+        }
+        else {
+            return Data::UUID->new->create_str;
+        }
+    }
+
+    return $self->SUPER::_next_in_sequence;
 }
-else {
-    return Data::UUID->new->create_str;
-}
-}
-
-return $self->SUPER::_next_in_sequence;
-}
-
 
 #----------------------------------------------------------------------
 # MORE MAGIC
@@ -687,39 +692,39 @@ use base qw/SQL::Abstract/;
 use Carp qw/croak/;
 
 sub where {
-my ($self, $where, $order, $must_join) = @_;
+    my ( $self, $where, $order, $must_join ) = @_;
 
-my $me = $self->{cdbi_me_alias};
-$self->{cdbi_table_aliases} = { $me => $self->{cdbi_class} };
-$self->{cdbi_join_info}     = { };
-$self->{cdbi_column_cache}  = { };
+    my $me = $self->{cdbi_me_alias};
+    $self->{cdbi_table_aliases} = { $me => $self->{cdbi_class} };
+    $self->{cdbi_join_info}     = {};
+    $self->{cdbi_column_cache}  = {};
 
-foreach my $join (@{$must_join || []}) {
-$self->_resolve_join($me => $join);
-}
+    foreach my $join ( @{ $must_join || [] } ) {
+        $self->_resolve_join( $me => $join );
+    }
 
-my $sql = '';
+    my $sql = '';
 
-my (@ret) = $self->_recurse_where($where);
+    my (@ret) = $self->_recurse_where($where);
 
-if (@ret) {
-my $wh = shift @ret;
-$sql .= $self->_sqlcase(' where ') . $wh if $wh;
-}
+    if (@ret) {
+        my $wh = shift @ret;
+        $sql .= $self->_sqlcase(' where ') . $wh if $wh;
+    }
 
-$sql =~ s/(\S+)( IS(?: NOT)? NULL)/$self->_default_tables($1).$2/ge;
+    $sql =~ s/(\S+)( IS(?: NOT)? NULL)/$self->_default_tables($1).$2/ge;
 
-    my $joins = delete $self->{cdbi_join_info};
+    my $joins  = delete $self->{cdbi_join_info};
     my $tables = delete $self->{cdbi_table_aliases};
 
-    my $from = $self->{cdbi_class}->table." ${me}";
+    my $from = $self->{cdbi_class}->table . " ${me}";
 
-    foreach my $join (keys %{$joins}) {
-      my $table = $tables->{$join}->table;
-      $from .= ", ${table} ${join}";
-      my ($l_alias, $l_key, $f_key) =
-             @{$joins->{$join}}{qw/l_alias l_key f_key/};
-      $sql .= " AND ${l_alias}.${l_key} = ${join}.${f_key}";
+    foreach my $join ( keys %{$joins} ) {
+        my $table = $tables->{$join}->table;
+        $from .= ", ${table} ${join}";
+        my ( $l_alias, $l_key, $f_key ) =
+          @{ $joins->{$join} }{qw/l_alias l_key f_key/};
+        $sql .= " AND ${l_alias}.${l_key} = ${join}.${f_key}";
     }
 
     # order by?
@@ -729,40 +734,39 @@ $sql =~ s/(\S+)( IS(?: NOT)? NULL)/$self->_default_tables($1).$2/ge;
 
     delete $self->{cdbi_column_cache};
 
-    return wantarray ? ($sql, $from, $tables, @ret) : $sql;
+    return wantarray ? ( $sql, $from, $tables, @ret ) : $sql;
 }
 
 sub _convert {
-    my ($self, $to_convert) = @_;
+    my ( $self, $to_convert ) = @_;
 
     return $self->SUPER::_convert($to_convert) if $to_convert eq '?';
     return $self->SUPER::_convert( $self->_default_tables($to_convert) );
 }
 
 sub _default_tables {
-    my ($self, $to_convert) = @_;
+    my ( $self, $to_convert ) = @_;
 
     my $alias = $self->{cdbi_me_alias};
 
-    my @alias = split(/\./, $to_convert);
+    my @alias = split ( /\./, $to_convert );
 
-    my $field = pop(@alias);
+    my $field = pop (@alias);
 
     foreach my $f_alias (@alias) {
 
-        $self->_resolve_join($alias => $f_alias)
-            unless $self->{cdbi_table_aliases}{$f_alias};
+        $self->_resolve_join( $alias => $f_alias )
+          unless $self->{cdbi_table_aliases}{$f_alias};
         $alias = $f_alias;
     }
 
-    if (my $meta = $self->{cdbi_class}->meta_info(
-                       has_many => $field )) {
+    if ( my $meta = $self->{cdbi_class}->meta_info( has_many => $field ) ) {
 
         my $f_alias = $field;
-        $self->_resolve_join($alias => $f_alias)
-            unless $self->{cdbi_table_aliases}{$f_alias};
+        $self->_resolve_join( $alias => $f_alias )
+          unless $self->{cdbi_table_aliases}{$f_alias};
 
-        $field = (($meta->foreign_class->columns('Primary'))[0]);
+        $field = ( ( $meta->foreign_class->columns('Primary') )[0] );
         $alias = $f_alias;
     }
 
@@ -770,29 +774,35 @@ sub _default_tables {
 }
 
 sub _resolve_join {
-    my ($self, $l_alias, $f_alias) = @_;
+    my ( $self, $l_alias, $f_alias ) = @_;
     my $l_class = $self->{cdbi_table_aliases}->{$l_alias};
-    my $meta = $l_class->meta_info;
-    my ($rel, $f_class);
-    if ($rel = $meta->{has_a}{$f_alias}) {
+    my $meta    = $l_class->meta_info;
+    my ( $rel, $f_class );
+    if ( $rel = $meta->{has_a}{$f_alias} ) {
         $f_class = $rel->foreign_class;
         $self->{cdbi_join_info}{$f_alias} = {
             l_alias => $l_alias,
-            l_key => $f_alias,
-            f_key => ($f_class->columns('Primary'))[0] };
-    } elsif ($rel = $meta->{has_many}{$f_alias}) {
+            l_key   => $f_alias,
+            f_key   => ( $f_class->columns('Primary') )[0]
+        };
+    }
+    elsif ( $rel = $meta->{has_many}{$f_alias} ) {
         $f_class = $rel->foreign_class;
         $self->{cdbi_join_info}{$f_alias} = {
             l_alias => $l_alias,
-            l_key => ($l_class->columns('Primary'))[0],
-            f_key => $rel->args->{foreign_key} };
-    } elsif ($rel = $meta->{might_have}{$f_alias}) {
+            l_key   => ( $l_class->columns('Primary') )[0],
+            f_key   => $rel->args->{foreign_key}
+        };
+    }
+    elsif ( $rel = $meta->{might_have}{$f_alias} ) {
         $f_class = $rel->foreign_class;
         $self->{cdbi_join_info}{$f_alias} = {
             l_alias => $l_alias,
-            l_key => ($l_class->columns('Primary'))[0],
-            f_key => ($f_class->columns('Primary'))[0] };
-    } else {
+            l_key   => ( $l_class->columns('Primary') )[0],
+            f_key   => ( $f_class->columns('Primary') )[0]
+        };
+    }
+    else {
         croak("Unable to find join info for ${f_alias} from ${l_class}");
     }
 
@@ -800,9 +810,9 @@ sub _resolve_join {
 }
 
 sub _bindtype {
-    my ($self, $var, $val, @rest) = @_;
+    my ( $self, $var, $val, @rest ) = @_;
     $var = $self->_default_tables($var);
-    my ($alias, $col) = split(/\./, $var);
+    my ( $alias, $col ) = split ( /\./, $var );
     my $f_class = $self->{cdbi_table_aliases}{$alias};
 
     my $column = $self->{cdbi_column_cache}{$alias}{$col};
@@ -810,21 +820,20 @@ sub _bindtype {
     unless ($column) {
 
         $column = $f_class->find_column($col)
-            || ( List::Util::first { $_->accessor eq $col }
-                                       $f_class->columns )
-            || croak("$col is not a column of ${f_class}");
+          || ( List::Util::first { $_->accessor eq $col } $f_class->columns )
+          || croak("$col is not a column of ${f_class}");
 
         $self->{cdbi_column_cache}{$alias}{$col} = $column;
     }
 
-    if (ref $val eq $f_class) {
+    if ( ref $val eq $f_class ) {
         my $accessor = $column->accessor;
         $val = $val->$accessor;
     }
 
     $val = $f_class->_deflated_column( $column, $val );
 
-    return $self->SUPER::_bindtype($var, $val, @rest);
+    return $self->SUPER::_bindtype( $var, $val, @rest );
 }
 
 1;
@@ -958,7 +967,7 @@ will be deflated before querying the database.
 
 =item case, cmp, convert, and logic
 
-These attributes are passed to L<SQL::Abstact>'s constuctor and alter the
+These attributes are passed to L<SQL::Abstract>'s constuctor and alter the
 behavior of the criteria.
 
     { cmp => 'like' }
@@ -1269,6 +1278,10 @@ column is suitable for storage.
 
     __PACKAGE__->sequence('uuid');
 
+=head1 MAINTAINERS
+
+Fred Moyer <fred@redhotpenguin.com>
+
 =head1 AUTHORS
 
 Christian Hansen <ch@ngmedia.com>
@@ -1280,7 +1293,7 @@ Andy Grundman <andy@hybridized.org>
 =head1 THANKS TO
 
 Danijel Milicevic, Jesse Sheidlower, Marcus Ramberg, Sebastian Riedel,
-Viljo Marrandi
+Viljo Marrandi, Bill Moseley
 
 =head1 SUPPORT
 
