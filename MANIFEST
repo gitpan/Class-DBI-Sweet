@@ -139,3 +139,4 @@ t/cdbi-t/testlib/Order.pm
 t/cdbi-t/testlib/OtherFilm.pm
 t/cdbi-t/testlib/PgBase.pm
 t/lib/SweetTest.pm
+META.json

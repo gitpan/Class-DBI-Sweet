@@ -21,6 +21,7 @@ SYNOPSIS
             deflate    => sub { shift->epoch }
         );
 
+
         # Simple search
 
         MyApp::Article->search( created_by => 'sri', { order_by => 'title' } );
@@ -30,6 +31,7 @@ SYNOPSIS
         MyApp::Article->page( created_by => 'sri', { page => 5 } );
 
         MyApp::Article->retrieve_all( order_by => 'created_on' );
+
 
         # More powerful search with deflating
 
